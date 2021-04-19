@@ -1,14 +1,25 @@
-/*! lightgallery - v1.2.0 - 2015-08-26
-* http://sachinchoolur.github.io/lightGallery/
-* Copyright (c) 2015 Sachin N; Licensed Apache 2.0 */
-/**
- * Autoplay Plugin
- * @version 1.2.0
- * @author Sachin N - @sachinchoolur
- * @license MIT License (MIT)
- */
+/*! lg-autoplay - v1.2.1 - 2020-06-13
+* http://sachinchoolur.github.io/lightGallery
+* Copyright (c) 2020 Sachin N; Licensed GPLv3 */
 
-(function($, window, document, undefined) {
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    // AMD. Register as an anonymous module unless amdModuleId is set
+    define(['jquery'], function (a0) {
+      return (factory(a0));
+    });
+  } else if (typeof module === 'object' && module.exports) {
+    // Node. Does not work with strict CommonJS, but
+    // only CommonJS-like environments that support module.exports,
+    // like Node.
+    module.exports = factory(require('jquery'));
+  } else {
+    factory(root["jQuery"]);
+  }
+}(this, function ($) {
+
+
+(function() {
 
     'use strict';
 
@@ -31,7 +42,7 @@
 
         this.$el = $(element);
 
-        // Exicute only if items are above 1
+        // Execute only if items are above 1
         if (this.core.$items.length < 2) {
             return false;
         }
@@ -76,7 +87,9 @@
 
         // Start autoplay
         if (_this.core.s.autoplay) {
-            _this.startlAuto();
+            _this.$el.one('onSlideItemLoad.lg.tm', function() {
+                _this.startlAuto();
+            });
         }
 
         // cancel interval on touchstart and dragstart
@@ -119,7 +132,7 @@
                 }
             }
 
-            // Remove setinterval if slide is trigered manualy and fourceautoplay is false
+            // Remove setinterval if slide is triggered manually and fourceautoplay is false
             if (!_this.fromAuto && !_this.core.s.fourceAutoplay) {
                 _this.cancelAuto();
             }
@@ -132,7 +145,7 @@
     // Manage autoplay via play/stop buttons
     Autoplay.prototype.controls = function() {
         var _this = this;
-        var _html = '<span class="lg-autoplay-button lg-icon"></span>';
+        var _html = '<button type="button" aria-label="Toggle autoplay" class="lg-autoplay-button lg-icon"></button>';
 
         // Append autoplay controls
         $(this.core.s.appendAutoplayControlsTo).append(_html);
@@ -160,18 +173,17 @@
 
         _this.interval = setInterval(function() {
             if (_this.core.index + 1 < _this.core.$items.length) {
-                _this.core.index = _this.core.index;
+                _this.core.index++;
             } else {
-                _this.core.index = -1;
+                _this.core.index = 0;
             }
 
-            _this.core.index++;
             _this.fromAuto = true;
-            _this.core.slide(_this.core.index, false, false);
+            _this.core.slide(_this.core.index, false, false, 'next');
         }, _this.core.s.speed + _this.core.s.pause);
     };
 
-    // cancel  Autostart
+    // cancel Autostart
     Autoplay.prototype.cancelAuto = function() {
         clearInterval(this.interval);
         this.interval = false;
@@ -188,4 +200,7 @@
 
     $.fn.lightGallery.modules.autoplay = Autoplay;
 
-})(jQuery, window, document);
+})();
+
+
+}));

@@ -1,8 +1,26 @@
-/*! lightgallery - v1.2.0 - 2015-08-26
+/*! lightgallery - v1.10.0 - 2020-11-07
 * http://sachinchoolur.github.io/lightGallery/
-* Copyright (c) 2015 Sachin N; Licensed Apache 2.0 */
-(function($, window, document, undefined) {
+* Copyright (c) 2020 Sachin N; Licensed GPLv3 */
+/*! lightgallery - v1.10.0 - 2020-11-07
+* http://sachinchoolur.github.io/lightGallery/
+* Copyright (c) 2020 Sachin N; Licensed GPLv3 */
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    // AMD. Register as an anonymous module unless amdModuleId is set
+    define(['jquery'], function (a0) {
+      return (factory(a0));
+    });
+  } else if (typeof module === 'object' && module.exports) {
+    // Node. Does not work with strict CommonJS, but
+    // only CommonJS-like environments that support module.exports,
+    // like Node.
+    module.exports = factory(require('jquery'));
+  } else {
+    factory(root["jQuery"]);
+  }
+}(this, function ($) {
 
+(function() {
     'use strict';
 
     var defaults = {
@@ -10,7 +28,7 @@
         mode: 'lg-slide',
 
         // Ex : 'ease'
-        cssEasing: 'cubic-bezier(0.25, 0, 0.25, 1)',
+        cssEasing: 'ease',
 
         //'for jquery animation'
         easing: 'linear',
@@ -20,9 +38,17 @@
         addClass: '',
         startClass: 'lg-start-zoom',
         backdropDuration: 150,
+
+        // Set 0, if u don't want to hide the controls 
         hideBarsDelay: 6000,
 
         useLeft: false,
+
+        // aria-labelledby attribute fot gallery
+        ariaLabelledby: '',
+        
+        //aria-describedby attribute for gallery
+        ariaDescribedby: '',
 
         closable: true,
         loop: true,
@@ -33,12 +59,16 @@
         hideControlOnEnd: false,
         mousewheel: true,
 
+        getCaptionFromTitleOrAlt: true,
+
         // .lg-item || '.lg-sub-html'
         appendSubHtmlTo: '.lg-sub-html',
 
+        subHtmlSelectorRelative: false,
+
         /**
          * @desc number of preload slides
-         * will exicute only after the current slide is fully loaded.
+         * will execute only after the current slide is fully loaded.
          *
          * @ex you clicked on 4th image and if preload = 1 then 3rd slide and 5th
          * slide will be loaded in the background after the 4th slide is fully loaded..
@@ -48,6 +78,7 @@
         preload: 1,
         showAfterLoad: true,
         selector: '',
+        selectWithin: '',
         nextHtml: '',
         prevHtml: '',
 
@@ -66,7 +97,8 @@
 
         dynamic: false,
         dynamicEl: [],
-        galleryId: 1
+        galleryId: 1,
+        supportLegacyBrowser: true
     };
 
     function Plugin(element, options) {
@@ -80,6 +112,11 @@
         // lightGallery settings
         this.s = $.extend({}, defaults, options);
 
+        // When using dynamic mode, ensure dynamicEl is an array
+        if (this.s.dynamic && this.s.dynamicEl !== 'undefined' && this.s.dynamicEl.constructor === Array && !this.s.dynamicEl.length) {
+            throw ('When using dynamic mode, you must also define dynamicEl as an Array.');
+        }
+
         // lightGallery modules
         this.modules = {};
 
@@ -89,12 +126,12 @@
         this.lgBusy = false;
 
         // Timeout function for hiding controls;
-        this.hideBartimeout = false;
+        this.hideBarTimeout = false;
 
         // To determine browser supports for touch events;
         this.isTouch = ('ontouchstart' in document.documentElement);
 
-        // DIsable hideControlOnEnd if sildeEndAnimation is true
+        // Disable hideControlOnEnd if sildeEndAnimation is true
         if (this.s.slideEndAnimatoin) {
             this.s.hideControlOnEnd = false;
         }
@@ -106,7 +143,11 @@
             if (this.s.selector === 'this') {
                 this.$items = this.$el;
             } else if (this.s.selector !== '') {
-                this.$items = this.$el.find($(this.s.selector));
+                if (this.s.selectWithin) {
+                    this.$items = $(this.s.selectWithin).find(this.s.selector);
+                } else {
+                    this.$items = this.$el.find($(this.s.selector));
+                }
             } else {
                 this.$items = this.$el.children();
             }
@@ -142,8 +183,9 @@
             if (!$('body').hasClass('lg-on')) {
                 setTimeout(function() {
                     _this.build(_this.index);
-                    $('body').addClass('lg-on');
                 });
+
+                $('body').addClass('lg-on');
             }
         }
 
@@ -199,7 +241,7 @@
         });
 
         // initiate slide function
-        _this.slide(index, false, false);
+        _this.slide(index, false, false, false);
 
         if (_this.s.keyPress) {
             _this.keyPress();
@@ -217,25 +259,36 @@
             if (_this.s.mousewheel) {
                 _this.mousewheel();
             }
+        } else {
+            _this.$slide.on('click.lg', function() {
+                _this.$el.trigger('onSlideClick.lg');
+            });
         }
 
         _this.counter();
 
         _this.closeGallery();
 
+        _this.$el.trigger('onAfterOpen.lg');
+
         // Hide controllers if mouse doesn't move for some period
-        _this.$outer.on('mousemove.lg click.lg touchstart.lg', function() {
+        if (_this.s.hideBarsDelay > 0) {
 
-            _this.$outer.removeClass('lg-hide-items');
+            // Hide controllers if mouse doesn't move for some period
+            _this.$outer.on('mousemove.lg click.lg touchstart.lg', function () {
+                _this.$outer.removeClass('lg-hide-items');
 
-            clearTimeout(_this.hideBartimeout);
+                clearTimeout(_this.hideBarTimeout);
 
-            // Timeout will be cleared on each slide movement also
-            _this.hideBartimeout = setTimeout(function() {
-                _this.$outer.addClass('lg-hide-items');
-            }, _this.s.hideBarsDelay);
+                // Timeout will be cleared on each slide movement also
+                _this.hideBarTimeout = setTimeout(function () {
+                    _this.$outer.addClass('lg-hide-items');
+                }, _this.s.hideBarsDelay);
 
-        });
+            });
+        }
+
+        _this.$outer.trigger('mousemove.lg');
 
     };
 
@@ -258,20 +311,25 @@
         // Create controlls
         if (this.s.controls && this.$items.length > 1) {
             controls = '<div class="lg-actions">' +
-                '<div class="lg-prev lg-icon">' + this.s.prevHtml + '</div>' +
-                '<div class="lg-next lg-icon">' + this.s.nextHtml + '</div>' +
+                '<button type="button" aria-label="Previous slide" class="lg-prev lg-icon">' + this.s.prevHtml + '</button>' +
+                '<button type="button" aria-label="Next slide" class="lg-next lg-icon">' + this.s.nextHtml + '</button>' +
                 '</div>';
         }
 
         if (this.s.appendSubHtmlTo === '.lg-sub-html') {
-            subHtmlCont = '<div class="lg-sub-html"></div>';
+            subHtmlCont = '<div role="status" aria-live="polite" class="lg-sub-html"></div>';
         }
 
-        template = '<div class="lg-outer ' + this.s.addClass + ' ' + this.s.startClass + '">' +
+        var ariaLabelledby = this.s.ariaLabelledby ?
+            'aria-labelledby="' + this.s.ariaLabelledby + '"' : '';
+        var ariaDescribedby = this.s.ariaDescribedby ?
+            'aria-describedby="' + this.s.ariaDescribedby + '"' : '';
+
+        template = '<div tabindex="-1" aria-modal="true" ' + ariaLabelledby + ' ' + ariaDescribedby + ' role="dialog" class="lg-outer ' + this.s.addClass + ' ' + this.s.startClass + '">' +
             '<div class="lg" style="width:' + this.s.width + '; height:' + this.s.height + '">' +
             '<div class="lg-inner">' + list + '</div>' +
-            '<div class="lg-toolbar group">' +
-            '<span class="lg-close lg-icon"></span>' +
+            '<div class="lg-toolbar lg-group">' +
+            '<button type="button" aria-label="Close gallery" class="lg-close lg-icon"></button>' +
             '</div>' +
             controls +
             subHtmlCont +
@@ -280,10 +338,14 @@
 
         $('body').append(template);
         this.$outer = $('.lg-outer');
+        this.$outer.focus();
         this.$slide = this.$outer.find('.lg-item');
 
         if (this.s.useLeft) {
             this.$outer.addClass('lg-use-left');
+
+            // Set mode lg-slide if use left is true;
+            this.s.mode = 'lg-slide';
         } else {
             this.$outer.addClass('lg-use-css3');
         }
@@ -304,6 +366,9 @@
             this.$outer.addClass('lg-css3');
         } else {
             this.$outer.addClass('lg-css');
+
+            // Set speed 0 because no animation will happen if browser doesn't support css3
+            this.s.speed = 0;
         }
 
         this.$outer.addClass(this.s.mode);
@@ -322,15 +387,20 @@
             $inner.css('transition-duration', this.s.speed + 'ms');
         }
 
-        $('.lg-backdrop').addClass('in');
+        setTimeout(function() {
+            $('.lg-backdrop').addClass('in');
+        });
 
         setTimeout(function() {
             _this.$outer.addClass('lg-visible');
         }, this.s.backdropDuration);
 
         if (this.s.download) {
-            this.$outer.find('.lg-toolbar').append('<a id="lg-download" target="_blank" download class="lg-download lg-icon"></a>');
+            this.$outer.find('.lg-toolbar').append('<a id="lg-download" aria-label="Download" target="_blank" download class="lg-download lg-icon"></a>');
         }
+
+        // Store the current scroll top value to scroll back after closing the gallery..
+        this.prevScrollTop = $(window).scrollTop();
 
     };
 
@@ -384,16 +454,22 @@
             html = this.$items.eq(index).attr('data-html');
         }
 
-        if (!src && html) {
-            return {
-                html5: true
-            };
+        if (!src) {
+            if (html) {
+                return {
+                    html5: true
+                };
+            } else {
+                console.error('lightGallery :- data-src is not provided on slide item ' + (index + 1) + '. Please make sure the selector property is properly configured. More info - http://sachinchoolur.github.io/lightGallery/demos/html-markup.html');
+                return false;
+            }
         }
 
-        var youtube = src.match(/\/\/(?:www\.)?youtu(?:\.be|be\.com)\/(?:watch\?v=|embed\/)?([a-z0-9self\-]+)/i);
-        var vimeo = src.match(/\/\/(?:www\.)?vimeo.com\/([0-9a-z\-_this]+)/i);
+        var youtube = src.match(/\/\/(?:www\.)?youtu(?:\.be|be\.com|be-nocookie\.com)\/(?:watch\?v=|embed\/)?([a-z0-9\-\_\%]+)/i);
+        var vimeo = src.match(/\/\/(?:www\.)?(?:player\.)?vimeo.com\/(?:video\/)?([0-9a-z\-_]+)/i);
+        var dailymotion = src.match(/\/\/(?:www\.)?dai.ly\/([0-9a-z\-_]+)/i);
+        var vk = src.match(/\/\/(?:www\.)?(?:vk\.com|vkontakte\.ru)\/(?:video_ext\.php\?)(.*)/i);
 
-        // return  { youtube  :  ["//www.youtube.com/watch?v=c0asJgSyxcY", "c0asJgSyxcY"] }
         if (youtube) {
             return {
                 youtube: youtube
@@ -401,6 +477,14 @@
         } else if (vimeo) {
             return {
                 vimeo: vimeo
+            };
+        } else if (dailymotion) {
+            return {
+                dailymotion: dailymotion
+            };
+        } else if (vk) {
+            return {
+                vk: vk
             };
         }
     };
@@ -411,7 +495,7 @@
      */
     Plugin.prototype.counter = function() {
         if (this.s.counter) {
-            $(this.s.appendCounterTo).append('<div id="lg-counter"><span id="lg-counter-current">' + (parseInt(this.index, 10) + 1) + '</span> / <span id="lg-counter-all">' + this.$items.length + '</span></div>');
+            $(this.s.appendCounterTo).append('<div id="lg-counter" role="status" aria-live="polite"><span id="lg-counter-current">' + (parseInt(this.index, 10) + 1) + '</span> / <span id="lg-counter-all">' + this.$items.length + '</span></div>');
         }
     };
 
@@ -421,37 +505,68 @@
      */
     Plugin.prototype.addHtml = function(index) {
         var subHtml = null;
+        var subHtmlUrl;
+        var $currentEle;
         if (this.s.dynamic) {
-            subHtml = this.s.dynamicEl[index].subHtml;
-        } else {
-            subHtml = this.$items.eq(index).attr('data-sub-html');
-        }
-
-        if (typeof subHtml !== 'undefined' && subHtml !== null) {
-
-            // get first letter of subhtml
-            // if first letter starts with . or # get the html form the jQuery object
-            var fL = subHtml.substring(0, 1);
-            if (fL === '.' || fL === '#') {
-                subHtml = $(subHtml).html();
+            if (this.s.dynamicEl[index].subHtmlUrl) {
+                subHtmlUrl = this.s.dynamicEl[index].subHtmlUrl;
             } else {
-                subHtml = subHtml;
+                subHtml = this.s.dynamicEl[index].subHtml;
             }
         } else {
-            subHtml = '';
+            $currentEle = this.$items.eq(index);
+            if ($currentEle.attr('data-sub-html-url')) {
+                subHtmlUrl = $currentEle.attr('data-sub-html-url');
+            } else {
+                subHtml = $currentEle.attr('data-sub-html');
+                if (this.s.getCaptionFromTitleOrAlt && !subHtml) {
+                    subHtml = $currentEle.attr('title') || $currentEle.find('img').first().attr('alt');
+                }
+            }
+        }
+
+        if (!subHtmlUrl) {
+            if (typeof subHtml !== 'undefined' && subHtml !== null) {
+
+                // get first letter of subhtml
+                // if first letter starts with . or # get the html form the jQuery object
+                var fL = subHtml.substring(0, 1);
+                if (fL === '.' || fL === '#') {
+                    if (this.s.subHtmlSelectorRelative && !this.s.dynamic) {
+                        subHtml = $currentEle.find(subHtml).html();
+                    } else {
+                        subHtml = $(subHtml).html();
+                    }
+                }
+            } else {
+                subHtml = '';
+            }
         }
 
         if (this.s.appendSubHtmlTo === '.lg-sub-html') {
-            this.$outer.find(this.s.appendSubHtmlTo).html(subHtml);
 
-            // Add lg-empty-html class if title doesn't exist
+            if (subHtmlUrl) {
+                this.$outer.find(this.s.appendSubHtmlTo).load(subHtmlUrl);
+            } else {
+                this.$outer.find(this.s.appendSubHtmlTo).html(subHtml);
+            }
+
+        } else {
+
+            if (subHtmlUrl) {
+                this.$slide.eq(index).load(subHtmlUrl);
+            } else {
+                this.$slide.eq(index).append(subHtml);
+            }
+        }
+
+        // Add lg-empty-html class if title doesn't exist
+        if (typeof subHtml !== 'undefined' && subHtml !== null) {
             if (subHtml === '') {
                 this.$outer.find(this.s.appendSubHtmlTo).addClass('lg-empty-html');
             } else {
                 this.$outer.find(this.s.appendSubHtmlTo).removeClass('lg-empty-html');
             }
-        } else {
-            this.$slide.eq(index).append(subHtml);
         }
 
         this.$el.trigger('onAfterAppendSubHtml.lg', [index]);
@@ -497,6 +612,7 @@
         var _srcset;
         var _sizes;
         var _html;
+        var _alt;
         var getResponsiveSrc = function(srcItms) {
             var rsWidth = [];
             var rsSrc = [];
@@ -530,6 +646,7 @@
 
             _html = _this.s.dynamicEl[index].html;
             _src = _this.s.dynamicEl[index].src;
+            _alt = _this.s.dynamicEl[index].alt;
 
             if (_this.s.dynamicEl[index].responsive) {
                 var srcDyItms = _this.s.dynamicEl[index].responsive.split(',');
@@ -540,22 +657,23 @@
             _sizes = _this.s.dynamicEl[index].sizes;
 
         } else {
-
-            if (_this.$items.eq(index).attr('data-poster')) {
+            var $currentEle = _this.$items.eq(index);
+            if ($currentEle.attr('data-poster')) {
                 _hasPoster = true;
-                _poster = _this.$items.eq(index).attr('data-poster');
+                _poster = $currentEle.attr('data-poster');
             }
 
-            _html = _this.$items.eq(index).attr('data-html');
-            _src = _this.$items.eq(index).attr('href') || _this.$items.eq(index).attr('data-src');
+            _html = $currentEle.attr('data-html');
+            _src = $currentEle.attr('href') || $currentEle.attr('data-src');
+            _alt = $currentEle.attr('title') || $currentEle.find('img').first().attr('alt');
 
-            if (_this.$items.eq(index).attr('data-responsive')) {
-                var srcItms = _this.$items.eq(index).attr('data-responsive').split(',');
+            if ($currentEle.attr('data-responsive')) {
+                var srcItms = $currentEle.attr('data-responsive').split(',');
                 getResponsiveSrc(srcItms);
             }
 
-            _srcset = _this.$items.eq(index).attr('data-srcset');
-            _sizes = _this.$items.eq(index).attr('data-sizes');
+            _srcset = $currentEle.attr('data-srcset');
+            _sizes = $currentEle.attr('data-sizes');
 
         }
 
@@ -575,7 +693,7 @@
         var _isVideo = _this.isVideo(_src, index);
         if (!_this.$slide.eq(index).hasClass('lg-loaded')) {
             if (iframe) {
-                _this.$slide.eq(index).prepend('<div class="lg-video-cont" style="max-width:' + _this.s.iframeMaxWidth + '"><div class="lg-video"><iframe class="lg-object" frameborder="0" src="' + _src + '"  allowfullscreen="true"></iframe></div></div>');
+                _this.$slide.eq(index).prepend('<div class="lg-video-cont lg-has-iframe" style="max-width:' + _this.s.iframeMaxWidth + '"><div class="lg-video"><iframe class="lg-object" frameborder="0" src="' + _src + '"  allowfullscreen="true"></iframe></div></div>');
             } else if (_hasPoster) {
                 var videoClass = '';
                 if (_isVideo && _isVideo.youtube) {
@@ -592,7 +710,8 @@
                 _this.$slide.eq(index).prepend('<div class="lg-video-cont "><div class="lg-video"></div></div>');
                 _this.$el.trigger('hasVideo.lg', [index, _src, _html]);
             } else {
-                _this.$slide.eq(index).prepend('<div class="lg-img-wrap"> <img class="lg-object lg-image" src="' + _src + '" /> </div>');
+                _alt = _alt ? 'alt="' + _alt + '"' : '';
+                _this.$slide.eq(index).prepend('<div class="lg-img-wrap"><img class="lg-object lg-image" ' + _alt + ' src="' + _src + '" /></div>');
             }
 
             _this.$el.trigger('onAferAppendSlide.lg', [index]);
@@ -604,12 +723,14 @@
 
             if (_srcset) {
                 _$img.attr('srcset', _srcset);
-                try {
-                    picturefill({
-                        elements: [_$img[0]]
-                    });
-                } catch (e) {
-                    console.error('Make sure you have included Picturefill version 2');
+                if (this.s.supportLegacyBrowser) {
+                    try {
+                        picturefill({
+                            elements: [_$img[0]]
+                        });
+                    } catch (e) {
+                        console.warn('lightGallery :- If you want srcset to be supported for older browser please include picturefil version 2 javascript library in your document.');
+                    }
                 }
             }
 
@@ -675,8 +796,9 @@
     *   @param {Number} index - index of the slide
     *   @param {Boolean} fromTouch - true if slide function called via touch event or mouse drag
     *   @param {Boolean} fromThumb - true if slide function called via thumbnail click
+    *   @param {String} direction - Direction of the slide(next/prev)
     */
-    Plugin.prototype.slide = function(index, fromTouch, fromThumb) {
+    Plugin.prototype.slide = function(index, fromTouch, fromThumb, direction) {
 
         var _prevIndex = this.$outer.find('.lg-current').index();
         var _this = this;
@@ -689,16 +811,31 @@
 
         var _length = this.$slide.length;
         var _time = _this.lGalleryOn ? this.s.speed : 0;
-        var _next = false;
-        var _prev = false;
 
         if (!_this.lgBusy) {
+
+            if (this.s.download) {
+                var _src;
+                if (_this.s.dynamic) {
+                    _src = _this.s.dynamicEl[index].downloadUrl !== false && (_this.s.dynamicEl[index].downloadUrl || _this.s.dynamicEl[index].src);
+                } else {
+                    _src = _this.$items.eq(index).attr('data-download-url') !== 'false' && (_this.$items.eq(index).attr('data-download-url') || _this.$items.eq(index).attr('href') || _this.$items.eq(index).attr('data-src'));
+
+                }
+
+                if (_src) {
+                    $('#lg-download').attr('href', _src);
+                    _this.$outer.removeClass('lg-hide-download');
+                } else {
+                    _this.$outer.addClass('lg-hide-download');
+                }
+            }
 
             this.$el.trigger('onBeforeSlide.lg', [_prevIndex, index, fromTouch, fromThumb]);
 
             _this.lgBusy = true;
 
-            clearTimeout(_this.hideBartimeout);
+            clearTimeout(_this.hideBarTimeout);
 
             // Add title if this.s.appendSubHtmlTo === lg-sub-html
             if (this.s.appendSubHtmlTo === '.lg-sub-html') {
@@ -711,6 +848,14 @@
 
             this.arrowDisable(index);
 
+            if (!direction) {
+                if (index < _prevIndex) {
+                    direction = 'prev';
+                } else if (index > _prevIndex) {
+                    direction = 'next';
+                }
+            }
+
             if (!fromTouch) {
 
                 // remove all transitions
@@ -718,26 +863,12 @@
 
                 this.$slide.removeClass('lg-prev-slide lg-next-slide');
 
-                if (index < _prevIndex) {
-                    _prev = true;
-                    if ((index === 0) && (_prevIndex === _length - 1) && !fromThumb) {
-                        _prev = false;
-                        _next = true;
-                    }
-                } else if (index > _prevIndex) {
-                    _next = true;
-                    if ((index === _length - 1) && (_prevIndex === 0) && !fromThumb) {
-                        _prev = true;
-                        _next = false;
-                    }
-                }
-
-                if (_prev) {
+                if (direction === 'prev') {
 
                     //prevslide
                     this.$slide.eq(index).addClass('lg-prev-slide');
                     this.$slide.eq(_prevIndex).addClass('lg-next-slide');
-                } else if (_next) {
+                } else {
 
                     // next slide
                     this.$slide.eq(index).addClass('lg-next-slide');
@@ -756,24 +887,36 @@
                 }, 50);
             } else {
 
-                var touchPrev = index - 1;
-                var touchNext = index + 1;
+                this.$slide.removeClass('lg-prev-slide lg-current lg-next-slide');
+                var touchPrev;
+                var touchNext;
+                if (_length > 2) {
+                    touchPrev = index - 1;
+                    touchNext = index + 1;
 
-                if ((index === 0) && (_prevIndex === _length - 1)) {
+                    if ((index === 0) && (_prevIndex === _length - 1)) {
 
-                    // next slide
-                    touchNext = 0;
-                    touchPrev = _length - 1;
-                } else if ((index === _length - 1) && (_prevIndex === 0)) {
+                        // next slide
+                        touchNext = 0;
+                        touchPrev = _length - 1;
+                    } else if ((index === _length - 1) && (_prevIndex === 0)) {
 
-                    // prev slide
-                    touchNext = 0;
-                    touchPrev = _length - 1;
+                        // prev slide
+                        touchNext = 0;
+                        touchPrev = _length - 1;
+                    }
+
+                } else {
+                    touchPrev = 0;
+                    touchNext = 1;
                 }
 
-                this.$slide.removeClass('lg-prev-slide lg-current lg-next-slide');
-                _this.$slide.eq(touchPrev).addClass('lg-prev-slide');
-                _this.$slide.eq(touchNext).addClass('lg-next-slide');
+                if (direction === 'prev') {
+                    _this.$slide.eq(touchNext).addClass('lg-next-slide');
+                } else {
+                    _this.$slide.eq(touchPrev).addClass('lg-prev-slide');
+                }
+
                 _this.$slide.eq(index).addClass('lg-current');
             }
 
@@ -787,34 +930,11 @@
                     _this.$el.trigger('onAfterSlide.lg', [_prevIndex, index, fromTouch, fromThumb]);
                 }, this.s.speed);
 
-                // Support non css3 browser
-                if (!_this.doCss()) {
-                    _this.$slide.fadeOut(_this.s.speed);
-                    _this.$slide.eq(index).fadeIn(_this.s.speed);
-                }
             } else {
                 _this.loadContent(index, true, _this.s.backdropDuration);
 
                 _this.lgBusy = false;
                 _this.$el.trigger('onAfterSlide.lg', [_prevIndex, index, fromTouch, fromThumb]);
-
-                // Support non css3 browser
-                if (!_this.doCss()) {
-                    _this.$slide.fadeOut(50);
-                    _this.$slide.eq(index).fadeIn(50);
-                }
-            }
-
-            if (this.s.download) {
-                var _src;
-                if (_this.s.dynamic) {
-                    _src = _this.s.dynamicEl[index].downloadUrl || _this.s.dynamicEl[index].src;
-                } else {
-                    _src = _this.$items.eq(index).attr('data-download-url') || _this.$items.eq(index).attr('href') || _this.$items.eq(index).attr('data-src');
-
-                }
-
-                $('#lg-download').attr('href', _src);
             }
 
             _this.lGalleryOn = true;
@@ -824,6 +944,7 @@
             }
 
         }
+        _this.index = index;
 
     };
 
@@ -833,17 +954,22 @@
      */
     Plugin.prototype.goToNextSlide = function(fromTouch) {
         var _this = this;
+        var _loop = _this.s.loop;
+        if (fromTouch && _this.$slide.length < 3) {
+            _loop = false;
+        }
+
         if (!_this.lgBusy) {
             if ((_this.index + 1) < _this.$slide.length) {
                 _this.index++;
                 _this.$el.trigger('onBeforeNextSlide.lg', [_this.index]);
-                _this.slide(_this.index, fromTouch, false);
+                _this.slide(_this.index, fromTouch, false, 'next');
             } else {
-                if (_this.s.loop) {
+                if (_loop) {
                     _this.index = 0;
                     _this.$el.trigger('onBeforeNextSlide.lg', [_this.index]);
-                    _this.slide(_this.index, fromTouch, false);
-                } else if (_this.s.slideEndAnimatoin) {
+                    _this.slide(_this.index, fromTouch, false, 'next');
+                } else if (_this.s.slideEndAnimatoin && !fromTouch) {
                     _this.$outer.addClass('lg-right-end');
                     setTimeout(function() {
                         _this.$outer.removeClass('lg-right-end');
@@ -859,17 +985,22 @@
      */
     Plugin.prototype.goToPrevSlide = function(fromTouch) {
         var _this = this;
+        var _loop = _this.s.loop;
+        if (fromTouch && _this.$slide.length < 3) {
+            _loop = false;
+        }
+
         if (!_this.lgBusy) {
             if (_this.index > 0) {
                 _this.index--;
                 _this.$el.trigger('onBeforePrevSlide.lg', [_this.index, fromTouch]);
-                _this.slide(_this.index, fromTouch, false);
+                _this.slide(_this.index, fromTouch, false, 'prev');
             } else {
-                if (_this.s.loop) {
+                if (_loop) {
                     _this.index = _this.$items.length - 1;
                     _this.$el.trigger('onBeforePrevSlide.lg', [_this.index, fromTouch]);
-                    _this.slide(_this.index, fromTouch, false);
-                } else if (_this.s.slideEndAnimatoin) {
+                    _this.slide(_this.index, fromTouch, false, 'prev');
+                } else if (_this.s.slideEndAnimatoin && !fromTouch) {
                     _this.$outer.addClass('lg-left-end');
                     setTimeout(function() {
                         _this.$outer.removeClass('lg-left-end');
@@ -898,9 +1029,13 @@
         }
 
         $(window).on('keydown.lg', function(e) {
-            if (_this.s.escKey === true && e.keyCode === 27 && !_this.$outer.hasClass('lg-thumb-open')) {
+            if (_this.s.escKey === true && e.keyCode === 27) {
                 e.preventDefault();
-                _this.destroy();
+                if (!_this.$outer.hasClass('lg-thumb-open')) {
+                    _this.destroy();
+                } else {
+                    _this.$outer.removeClass('lg-thumb-open');
+                }
             }
         });
     };
@@ -949,15 +1084,17 @@
 
         var distance = endCoords - startCoords;
 
-        // reset opacity and transition duration
-        this.$outer.addClass('lg-dragging');
+        if (Math.abs(distance) > 15) {
+            // reset opacity and transition duration
+            this.$outer.addClass('lg-dragging');
 
-        // move current slide
-        this.setTranslate(this.$slide.eq(this.index), distance, 0);
+            // move current slide
+            this.setTranslate(this.$slide.eq(this.index), distance, 0);
 
-        // move next and prev slide with current slide
-        this.setTranslate($('.lg-prev-slide'), -this.$slide.eq(this.index).width() + distance, 0);
-        this.setTranslate($('.lg-next-slide'), this.$slide.eq(this.index).width() + distance, 0);
+            // move next and prev slide with current slide
+            this.setTranslate($('.lg-prev-slide'), -this.$slide.eq(this.index).width() + distance, 0);
+            this.setTranslate($('.lg-next-slide'), this.$slide.eq(this.index).width() + distance, 0);
+        }
     };
 
     Plugin.prototype.touchEnd = function(distance) {
@@ -1001,7 +1138,7 @@
         var endCoords = 0;
         var isMoved = false;
 
-        if (_this.s.enableSwipe && _this.isTouch && _this.doCss()) {
+        if (_this.s.enableSwipe && _this.doCss()) {
 
             _this.$slide.on('touchstart.lg', function(e) {
                 if (!_this.$outer.hasClass('lg-zoomed') && !_this.lgBusy) {
@@ -1040,30 +1177,23 @@
         var endCoords = 0;
         var isDraging = false;
         var isMoved = false;
-        if (_this.s.enableDrag && !_this.isTouch && _this.doCss()) {
+        if (_this.s.enableDrag && _this.doCss()) {
             _this.$slide.on('mousedown.lg', function(e) {
-                // execute only on .lg-object
-                if (!_this.$outer.hasClass('lg-zoomed')) {
-                    if ($(e.target).hasClass('lg-object') || $(e.target).hasClass('lg-video-play')) {
-                        e.preventDefault();
+                if (!_this.$outer.hasClass('lg-zoomed') && !_this.lgBusy && !$(e.target).text().trim()) {
+                    e.preventDefault();
+                    _this.manageSwipeClass();
+                    startCoords = e.pageX;
+                    isDraging = true;
 
-                        if (!_this.lgBusy) {
-                            _this.manageSwipeClass();
-                            startCoords = e.pageX;
-                            isDraging = true;
+                    // ** Fix for webkit cursor issue https://code.google.com/p/chromium/issues/detail?id=26723
+                    _this.$outer.scrollLeft += 1;
+                    _this.$outer.scrollLeft -= 1;
 
-                            // ** Fix for webkit cursor issue https://code.google.com/p/chromium/issues/detail?id=26723
-                            _this.$outer.scrollLeft += 1;
-                            _this.$outer.scrollLeft -= 1;
+                    // *
 
-                            // *
+                    _this.$outer.removeClass('lg-grab').addClass('lg-grabbing');
 
-                            _this.$outer.removeClass('lg-grab').addClass('lg-grabbing');
-
-                            _this.$el.trigger('onDragstart.lg');
-                        }
-
-                    }
+                    _this.$el.trigger('onDragstart.lg');
                 }
             });
 
@@ -1096,28 +1226,32 @@
     };
 
     Plugin.prototype.manageSwipeClass = function() {
-        var touchNext = this.index + 1;
-        var touchPrev = this.index - 1;
-        var length = this.$slide.length;
-        if (this.s.loop) {
+        var _touchNext = this.index + 1;
+        var _touchPrev = this.index - 1;
+        if (this.s.loop && this.$slide.length > 2) {
             if (this.index === 0) {
-                touchPrev = length - 1;
-            } else if (this.index === length - 1) {
-                touchNext = 0;
+                _touchPrev = this.$slide.length - 1;
+            } else if (this.index === this.$slide.length - 1) {
+                _touchNext = 0;
             }
         }
 
         this.$slide.removeClass('lg-next-slide lg-prev-slide');
-        if (touchPrev > -1) {
-            this.$slide.eq(touchPrev).addClass('lg-prev-slide');
+        if (_touchPrev > -1) {
+            this.$slide.eq(_touchPrev).addClass('lg-prev-slide');
         }
 
-        this.$slide.eq(touchNext).addClass('lg-next-slide');
+        this.$slide.eq(_touchNext).addClass('lg-next-slide');
     };
 
     Plugin.prototype.mousewheel = function() {
         var _this = this;
         _this.$outer.on('mousewheel.lg', function(e) {
+
+            if (!e.deltaY) {
+                return;
+            }
+
             if (e.deltaY > 0) {
                 _this.goToPrevSlide();
             } else {
@@ -1151,6 +1285,10 @@
 
             });
 
+            _this.$outer.on('mousemove.lg', function() {
+                mousedown = false;
+            });
+
             _this.$outer.on('mouseup.lg', function(e) {
 
                 if ($(e.target).is('.lg-outer') || $(e.target).is('.lg-item ') || $(e.target).is('.lg-img-wrap') && mousedown) {
@@ -1169,24 +1307,32 @@
 
         var _this = this;
 
-        _this.$el.trigger('onBeforeClose.lg');
+        if (!d) {
+            _this.$el.trigger('onBeforeClose.lg');
+            $(window).scrollTop(_this.prevScrollTop);
+        }
+
 
         /**
          * if d is false or undefined destroy will only close the gallery
          * plugins instance remains with the element
-         
+         *
          * if d is true destroy will completely remove the plugin
          */
 
         if (d) {
-            this.$items.off('click.lg click.lgcustom');
+            if (!_this.s.dynamic) {
+                // only when not using dynamic mode is $items a jquery collection
+                this.$items.off('click.lg click.lgcustom');
+            }
+
             $.removeData(_this.el, 'lightGallery');
         }
 
         // Unbind all events added by lightGallery
         this.$el.off('.lg.tm');
 
-        // Distroy all lightGallery modules
+        // destroy all lightGallery modules
         $.each($.fn.lightGallery.modules, function(key) {
             if (_this.modules[key]) {
                 _this.modules[key].destroy();
@@ -1195,8 +1341,8 @@
 
         this.lGalleryOn = false;
 
-        clearTimeout(_this.hideBartimeout);
-        this.hideBartimeout = false;
+        clearTimeout(_this.hideBarTimeout);
+        this.hideBarTimeout = false;
         $(window).off('.lg');
         $('body').removeClass('lg-on lg-from-hash');
 
@@ -1213,7 +1359,11 @@
 
             $('.lg-backdrop').remove();
 
-            _this.$el.trigger('onCloseAfter.lg');
+            if (!d) {
+                _this.$el.trigger('onCloseAfter.lg');
+            }
+            _this.$el.focus();
+
         }, _this.s.backdropDuration + 50);
     };
 
@@ -1225,7 +1375,7 @@
                 try {
                     $(this).data('lightGallery').init();
                 } catch (err) {
-                    console.error('lightGallery has not initiated properly');
+                    console.error('lightGallery has not initiated properly', err);
                 }
             }
         });
@@ -1233,16 +1383,33 @@
 
     $.fn.lightGallery.modules = {};
 
-})(jQuery, window, document);
+})();
 
-/**
- * Autoplay Plugin
- * @version 1.2.0
- * @author Sachin N - @sachinchoolur
- * @license MIT License (MIT)
- */
 
-(function($, window, document, undefined) {
+}));
+
+/*! lg-autoplay - v1.2.1 - 2020-06-13
+* http://sachinchoolur.github.io/lightGallery
+* Copyright (c) 2020 Sachin N; Licensed GPLv3 */
+
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    // AMD. Register as an anonymous module unless amdModuleId is set
+    define(['jquery'], function (a0) {
+      return (factory(a0));
+    });
+  } else if (typeof module === 'object' && module.exports) {
+    // Node. Does not work with strict CommonJS, but
+    // only CommonJS-like environments that support module.exports,
+    // like Node.
+    module.exports = factory(require('jquery'));
+  } else {
+    factory(root["jQuery"]);
+  }
+}(this, function ($) {
+
+
+(function() {
 
     'use strict';
 
@@ -1265,7 +1432,7 @@
 
         this.$el = $(element);
 
-        // Exicute only if items are above 1
+        // Execute only if items are above 1
         if (this.core.$items.length < 2) {
             return false;
         }
@@ -1310,7 +1477,9 @@
 
         // Start autoplay
         if (_this.core.s.autoplay) {
-            _this.startlAuto();
+            _this.$el.one('onSlideItemLoad.lg.tm', function() {
+                _this.startlAuto();
+            });
         }
 
         // cancel interval on touchstart and dragstart
@@ -1353,7 +1522,7 @@
                 }
             }
 
-            // Remove setinterval if slide is trigered manualy and fourceautoplay is false
+            // Remove setinterval if slide is triggered manually and fourceautoplay is false
             if (!_this.fromAuto && !_this.core.s.fourceAutoplay) {
                 _this.cancelAuto();
             }
@@ -1366,7 +1535,7 @@
     // Manage autoplay via play/stop buttons
     Autoplay.prototype.controls = function() {
         var _this = this;
-        var _html = '<span class="lg-autoplay-button lg-icon"></span>';
+        var _html = '<button type="button" aria-label="Toggle autoplay" class="lg-autoplay-button lg-icon"></button>';
 
         // Append autoplay controls
         $(this.core.s.appendAutoplayControlsTo).append(_html);
@@ -1394,18 +1563,17 @@
 
         _this.interval = setInterval(function() {
             if (_this.core.index + 1 < _this.core.$items.length) {
-                _this.core.index = _this.core.index;
+                _this.core.index++;
             } else {
-                _this.core.index = -1;
+                _this.core.index = 0;
             }
 
-            _this.core.index++;
             _this.fromAuto = true;
-            _this.core.slide(_this.core.index, false, false);
+            _this.core.slide(_this.core.index, false, false, 'next');
         }, _this.core.s.speed + _this.core.s.pause);
     };
 
-    // cancel  Autostart
+    // cancel Autostart
     Autoplay.prototype.cancelAuto = function() {
         clearInterval(this.interval);
         this.interval = false;
@@ -1422,15 +1590,47 @@
 
     $.fn.lightGallery.modules.autoplay = Autoplay;
 
-})(jQuery, window, document);
+})();
 
-(function($, window, document, undefined) {
+
+}));
+
+/*! lg-fullscreen - v1.2.1 - 2020-06-13
+* http://sachinchoolur.github.io/lightGallery
+* Copyright (c) 2020 Sachin N; Licensed GPLv3 */
+
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    // AMD. Register as an anonymous module unless amdModuleId is set
+    define(['jquery'], function (a0) {
+      return (factory(a0));
+    });
+  } else if (typeof module === 'object' && module.exports) {
+    // Node. Does not work with strict CommonJS, but
+    // only CommonJS-like environments that support module.exports,
+    // like Node.
+    module.exports = factory(require('jquery'));
+  } else {
+    factory(root["jQuery"]);
+  }
+}(this, function ($) {
+
+(function() {
 
     'use strict';
 
     var defaults = {
         fullScreen: true
     };
+
+    function isFullScreen() {
+        return (
+            document.fullscreenElement ||
+            document.mozFullScreenElement ||
+            document.webkitFullscreenElement ||
+            document.msFullscreenElement
+        );
+    }
 
     var Fullscreen = function(element) {
 
@@ -1456,14 +1656,14 @@
                 !document.mozFullScreenEnabled && !document.msFullscreenEnabled) {
                 return;
             } else {
-                fullScreen = '<span class="lg-fullscreen lg-icon"></span>';
+                fullScreen = '<button type="button" aria-label="Toggle fullscreen" class="lg-fullscreen lg-icon"></button>';
                 this.core.$outer.find('.lg-toolbar').append(fullScreen);
                 this.fullScreen();
             }
         }
     };
 
-    Fullscreen.prototype.reuestFullscreen = function() {
+    Fullscreen.prototype.requestFullscreen = function() {
         var el = document.documentElement;
         if (el.requestFullscreen) {
             el.requestFullscreen();
@@ -1497,11 +1697,10 @@
         });
 
         this.core.$outer.find('.lg-fullscreen').on('click.lg', function() {
-            if (!document.fullscreenElement &&
-                !document.mozFullScreenElement && !document.webkitFullscreenElement && !document.msFullscreenElement) {
-                _this.reuestFullscreen();
-            } else {
+            if (isFullScreen()) {
                 _this.exitFullscreen();
+            } else {
+                _this.requestFullscreen();
             }
         });
 
@@ -1510,16 +1709,40 @@
     Fullscreen.prototype.destroy = function() {
 
         // exit from fullscreen if activated
-        this.exitFullscreen();
+        if(isFullScreen()) {
+            this.exitFullscreen();
+        }
 
         $(document).off('fullscreenchange.lg webkitfullscreenchange.lg mozfullscreenchange.lg MSFullscreenChange.lg');
     };
 
     $.fn.lightGallery.modules.fullscreen = Fullscreen;
 
-})(jQuery, window, document);
+})();
 
-(function($, window, document, undefined) {
+}));
+
+/*! lg-pager - v1.0.2 - 2017-01-22
+* http://sachinchoolur.github.io/lightGallery
+* Copyright (c) 2017 Sachin N; Licensed GPLv3 */
+
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    // AMD. Register as an anonymous module unless amdModuleId is set
+    define(['jquery'], function (a0) {
+      return (factory(a0));
+    });
+  } else if (typeof exports === 'object') {
+    // Node. Does not work with strict CommonJS, but
+    // only CommonJS-like environments that support module.exports,
+    // like Node.
+    module.exports = factory(require('jquery'));
+  } else {
+    factory(jQuery);
+  }
+}(this, function ($) {
+
+(function() {
 
     'use strict';
 
@@ -1573,7 +1796,7 @@
         $pagerCont.on('click.lg touchend.lg', function() {
             var _$this = $(this);
             _this.core.index = _$this.index();
-            _this.core.slide(_this.core.index, false, false);
+            _this.core.slide(_this.core.index, false, true, false);
         });
 
         $pagerOuter.on('mouseover.lg', function() {
@@ -1600,9 +1823,32 @@
 
     $.fn.lightGallery.modules.pager = Pager;
 
-})(jQuery, window, document);
+})();
 
-(function($, window, document, undefined) {
+
+}));
+
+/*! lg-thumbnail - v1.2.1 - 2020-06-13
+* http://sachinchoolur.github.io/lightGallery
+* Copyright (c) 2020 Sachin N; Licensed GPLv3 */
+
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    // AMD. Register as an anonymous module unless amdModuleId is set
+    define(['jquery'], function (a0) {
+      return (factory(a0));
+    });
+  } else if (typeof module === 'object' && module.exports) {
+    // Node. Does not work with strict CommonJS, but
+    // only CommonJS-like environments that support module.exports,
+    // like Node.
+    module.exports = factory(require('jquery'));
+  } else {
+    factory(root["jQuery"]);
+  }
+}(this, function ($) {
+
+(function() {
 
     'use strict';
 
@@ -1613,12 +1859,14 @@
         currentPagerPosition: 'middle',
 
         thumbWidth: 100,
+        thumbHeight: '80px',
         thumbContHeight: 100,
         thumbMargin: 5,
 
         exThumbImage: false,
         showThumbByDefault: true,
         toogleThumb: true,
+        pullCaptionUp: true,
 
         enableThumbDrag: true,
         enableThumbSwipe: true,
@@ -1628,7 +1876,9 @@
         youtubeThumbSize: 1,
 
         loadVimeoThumbnail: true,
-        vimeoThumbSize: 'thumbnail_small'
+        vimeoThumbSize: 'thumbnail_small',
+
+        loadDailymotionThumbnail: true
     };
 
     var Thumbnail = function(element) {
@@ -1645,6 +1895,10 @@
         this.thumbTotalWidth = (this.core.$items.length * (this.core.s.thumbWidth + this.core.s.thumbMargin));
         this.thumbIndex = this.core.index;
 
+        if (this.core.s.animateThumb) {
+            this.core.s.thumbHeight = '100%';
+        }
+
         // Thumbnail animation value
         this.left = 0;
 
@@ -1654,18 +1908,25 @@
     };
 
     Thumbnail.prototype.init = function() {
+        var _this = this;
         if (this.core.s.thumbnail && this.core.$items.length > 1) {
             if (this.core.s.showThumbByDefault) {
-                this.core.$outer.addClass('lg-thumb-open');
+                setTimeout(function(){
+                    _this.core.$outer.addClass('lg-thumb-open');
+                }, 700);
+            }
+
+            if (this.core.s.pullCaptionUp) {
+                this.core.$outer.addClass('lg-pull-caption-up');
             }
 
             this.build();
-            if (this.core.s.animateThumb) {
-                if (this.core.s.enableThumbDrag && !this.core.isTouch && this.core.doCss()) {
+            if (this.core.s.animateThumb && this.core.doCss()) {
+                if (this.core.s.enableThumbDrag) {
                     this.enableThumbDrag();
                 }
 
-                if (this.core.s.enableThumbSwipe && this.core.isTouch && this.core.doCss()) {
+                if (this.core.s.enableThumbSwipe) {
                     this.enableThumbSwipe();
                 }
 
@@ -1682,22 +1943,22 @@
     Thumbnail.prototype.build = function() {
         var _this = this;
         var thumbList = '';
-        var viemoErrorThumbSize = '';
+        var vimeoErrorThumbSize = '';
         var $thumb;
         var html = '<div class="lg-thumb-outer">' +
-            '<div class="lg-thumb group">' +
+            '<div class="lg-thumb lg-group">' +
             '</div>' +
             '</div>';
 
         switch (this.core.s.vimeoThumbSize) {
             case 'thumbnail_large':
-                viemoErrorThumbSize = '640';
+                vimeoErrorThumbSize = '640';
                 break;
             case 'thumbnail_medium':
-                viemoErrorThumbSize = '200x150';
+                vimeoErrorThumbSize = '200x150';
                 break;
             case 'thumbnail_small':
-                viemoErrorThumbSize = '100x75';
+                vimeoErrorThumbSize = '100x75';
         }
 
         _this.core.$outer.addClass('lg-has-thumb');
@@ -1723,17 +1984,23 @@
             var thumbImg;
             var vimeoId = '';
 
-            if (isVideo.youtube || isVideo.vimeo) {
+            if (isVideo.youtube || isVideo.vimeo || isVideo.dailymotion) {
                 if (isVideo.youtube) {
                     if (_this.core.s.loadYoutubeThumbnail) {
-                        thumbImg = 'http://img.youtube.com/vi/' + isVideo.youtube[1] + '/' + _this.core.s.youtubeThumbSize + '.jpg';
+                        thumbImg = '//img.youtube.com/vi/' + isVideo.youtube[1] + '/' + _this.core.s.youtubeThumbSize + '.jpg';
                     } else {
                         thumbImg = thumb;
                     }
                 } else if (isVideo.vimeo) {
                     if (_this.core.s.loadVimeoThumbnail) {
-                        thumbImg = 'https://i.vimeocdn.com/video/error_' + viemoErrorThumbSize + '.jpg';
+                        thumbImg = '//i.vimeocdn.com/video/error_' + vimeoErrorThumbSize + '.jpg';
                         vimeoId = isVideo.vimeo[1];
+                    } else {
+                        thumbImg = thumb;
+                    }
+                } else if (isVideo.dailymotion) {
+                    if (_this.core.s.loadDailymotionThumbnail) {
+                        thumbImg = '//www.dailymotion.com/thumbnail/video/' + isVideo.dailymotion[1];
                     } else {
                         thumbImg = thumb;
                     }
@@ -1742,7 +2009,7 @@
                 thumbImg = thumb;
             }
 
-            thumbList += '<div data-vimoe-id="' + vimeoId + '" class="lg-thumb-item" style="width:' + _this.core.s.thumbWidth + 'px; margin-right: ' + _this.core.s.thumbMargin + 'px"><img src="' + thumbImg + '" /></div>';
+            thumbList += '<div data-vimeo-id="' + vimeoId + '" class="lg-thumb-item" style="width:' + _this.core.s.thumbWidth + 'px; height: ' + _this.core.s.thumbHeight + '; margin-right: ' + _this.core.s.thumbMargin + 'px"><img src="' + thumbImg + '" /></div>';
             vimeoId = '';
         }
 
@@ -1769,10 +2036,10 @@
         // Load vimeo thumbnails
         $thumb.each(function() {
             var $this = $(this);
-            var vimeoVideoId = $this.attr('data-vimoe-id');
+            var vimeoVideoId = $this.attr('data-vimeo-id');
 
             if (vimeoVideoId) {
-                $.getJSON('http://www.vimeo.com/api/v2/video/' + vimeoVideoId + '.json?callback=?', {
+                $.getJSON('//www.vimeo.com/api/v2/video/' + vimeoVideoId + '.json?callback=?', {
                     format: 'json'
                 }, function(data) {
                     $this.find('img').attr('src', data[0][_this.core.s.vimeoThumbSize]);
@@ -1795,7 +2062,7 @@
                 // Go to slide if browser does not support css transitions
                 if ((_this.thumbClickable && !_this.core.lgBusy) || !_this.core.doCss()) {
                     _this.core.index = _$this.index();
-                    _this.core.slide(_this.core.index, false, true);
+                    _this.core.slide(_this.core.index, false, true, false);
                 }
             }, 50);
         });
@@ -2006,7 +2273,7 @@
         var _this = this;
         if (_this.core.s.toogleThumb) {
             _this.core.$outer.addClass('lg-can-toggle');
-            _this.$thumbOuter.append('<span class="lg-toogle-thumb lg-icon"></span>');
+            _this.$thumbOuter.append('<button type="button" aria-label="Toggle thumbnails" class="lg-toogle-thumb lg-icon"></button>');
             _this.core.$outer.find('.lg-toogle-thumb').on('click.lg', function() {
                 _this.core.$outer.toggleClass('lg-thumb-open');
             });
@@ -2036,69 +2303,185 @@
 
     $.fn.lightGallery.modules.Thumbnail = Thumbnail;
 
-})(jQuery, window, document);
+})();
 
-(function($, window, document, undefined) {
+}));
 
-    'use strict';
+/*! lg-video - v1.4.0 - November-07-2020
+* http://sachinchoolur.github.io/lightGallery
+* Copyright (c) 2020 Sachin N; Licensed GPLv3 */
 
-    var defaults = {
-        videoMaxWidth: '855px',
-        youtubePlayerParams: false,
-        vimeoPlayerParams: false,
-        videojs: false
-    };
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    // AMD. Register as an anonymous module unless amdModuleId is set
+    define(['jquery'], function (a0) {
+      return (factory(a0));
+    });
+  } else if (typeof module === 'object' && module.exports) {
+    // Node. Does not work with strict CommonJS, but
+    // only CommonJS-like environments that support module.exports,
+    // like Node.
+    module.exports = factory(require('jquery'));
+  } else {
+    factory(root["jQuery"]);
+  }
+}(this, function ($) {
 
-    var Video = function(element) {
+(function() {
+    
+        'use strict';
 
-        this.core = $(element).data('lightGallery');
+        var defaults = {
+            videoMaxWidth: '855px',
 
-        this.$el = $(element);
-        this.core.s = $.extend({}, defaults, this.core.s);
-        this.videoLoaded = false;
+            autoplayFirstVideo: true,
 
-        this.init();
+            youtubePlayerParams: false,
+            vimeoPlayerParams: false,
+            dailymotionPlayerParams: false,
+            vkPlayerParams: false,
 
-        return this;
-    };
+            videojs: false,
+            videojsOptions: {}
+        };
 
-    Video.prototype.init = function() {
-        var _this = this;
+        var Video = function(element) {
 
-        // Event triggered when video url found without poster
-        _this.core.$el.on('hasVideo.lg.tm', function(event, index, src, html) {
-            _this.core.$slide.eq(index).find('.lg-video').append(_this.loadVideo(src, 'lg-object', true, index, html));
-            if (html) {
-                if (_this.core.s.videojs) {
-                    try {
-                        videojs(_this.core.$slide.eq(index).find('.lg-html5').get(0), {}, function() {
-                            if (!_this.videoLoaded) {
-                                this.play();
-                            }
-                        });
-                    } catch (e) {
-                        console.error('Make sure you have included videojs');
+            this.core = $(element).data('lightGallery');
+
+            this.$el = $(element);
+            this.core.s = $.extend({}, defaults, this.core.s);
+            this.videoLoaded = false;
+
+            this.init();
+
+            return this;
+        };
+
+        Video.prototype.init = function() {
+            var _this = this;
+
+            // Event triggered when video url found without poster
+            _this.core.$el.on('hasVideo.lg.tm', onHasVideo.bind(this));
+
+            // Set max width for video
+            _this.core.$el.on('onAferAppendSlide.lg.tm', onAferAppendSlide.bind(this));
+
+            if (_this.core.doCss() && (_this.core.$items.length > 1) && (_this.core.s.enableSwipe || _this.core.s.enableDrag)) {
+                _this.core.$el.on('onSlideClick.lg.tm', function() {
+                    var $el = _this.core.$slide.eq(_this.core.index);
+                    _this.loadVideoOnclick($el);
+                });
+            } else {
+
+                // For IE 9 and bellow
+                _this.core.$slide.on('click.lg', function() {
+                    _this.loadVideoOnclick($(this));
+                });
+            }
+
+            _this.core.$el.on('onBeforeSlide.lg.tm', onBeforeSlide.bind(this));
+
+            _this.core.$el.on('onAfterSlide.lg.tm', function(event, prevIndex) {
+                _this.core.$slide.eq(prevIndex).removeClass('lg-video-playing');
+            });
+            
+            if (_this.core.s.autoplayFirstVideo) {
+                _this.core.$el.on('onAferAppendSlide.lg.tm', function (e, index) {
+                    if (!_this.core.lGalleryOn) {
+                        var $el = _this.core.$slide.eq(index);
+                        setTimeout(function () {
+                            _this.loadVideoOnclick($el);
+                        }, 100);
                     }
+                });
+            }
+        };
+
+        Video.prototype.loadVideo = function(src, addClass, noPoster, index, html) {
+            var _this = this;
+            var video = '';
+            var autoplay = 1;
+            var a = '';
+            var isVideo = this.core.isVideo(src, index) || {};
+            var videoTitle;
+
+            if (_this.core.s.dynamic) {
+                videoTitle = _this.core.s.dynamicEl[_this.core.index].title;
+            } else {
+                videoTitle = _this.core.$items.eq(_this.core.index).attr('title') || _this.core.$items.eq(_this.core.index).find('img').first().attr('alt');
+            }
+
+            videoTitle = videoTitle ? 'title="' + videoTitle + '"' : '';
+
+            // Enable autoplay based on setting for first video if poster doesn't exist
+            if (noPoster) {
+                if (this.videoLoaded) {
+                    autoplay = 0;
                 } else {
-                    _this.core.$slide.eq(index).find('.lg-html5').get(0).play();
+                    autoplay = this.core.s.autoplayFirstVideo ? 1 : 0;
                 }
             }
-        });
 
-        // Set max width for video
-        _this.core.$el.on('onAferAppendSlide.lg.tm', function(event, index) {
-            _this.core.$slide.eq(index).find('.lg-video-cont').css('max-width', _this.core.s.videoMaxWidth);
-            _this.videoLoaded = true;
-        });
+            if (isVideo.youtube) {
 
-        var loadOnClick = function($el) {
+                a = '?wmode=opaque&autoplay=' + autoplay + '&enablejsapi=1';
+                if (this.core.s.youtubePlayerParams) {
+                    a = a + '&' + $.param(this.core.s.youtubePlayerParams);
+                }
+
+                video = '<iframe allow="autoplay" class="lg-video-object lg-youtube ' + addClass + '" ' + videoTitle + ' width="560" height="315" src="//www.youtube.com/embed/' + isVideo.youtube[1] + a + '" frameborder="0" allowfullscreen></iframe>';
+
+            } else if (isVideo.vimeo) {
+
+                a = '?autoplay=' + autoplay;
+                if (this.core.s.vimeoPlayerParams) {
+                    a = a + '&' + $.param(this.core.s.vimeoPlayerParams);
+                }
+
+                video = '<iframe allow="autoplay" class="lg-video-object lg-vimeo ' + addClass + '" ' + videoTitle + ' width="560" height="315"  src="//player.vimeo.com/video/' + isVideo.vimeo[1] + a + '" frameborder="0" webkitAllowFullScreen mozallowfullscreen allowFullScreen></iframe>';
+
+            } else if (isVideo.dailymotion) {
+
+                a = '?wmode=opaque&autoplay=' + autoplay + '&api=postMessage';
+                if (this.core.s.dailymotionPlayerParams) {
+                    a = a + '&' + $.param(this.core.s.dailymotionPlayerParams);
+                }
+
+                video = '<iframe allow="autoplay" class="lg-video-object lg-dailymotion ' + addClass + '" ' + videoTitle + ' width="560" height="315" src="//www.dailymotion.com/embed/video/' + isVideo.dailymotion[1] + a + '" frameborder="0" allowfullscreen></iframe>';
+
+            } else if (isVideo.html5) {
+                var fL = html.substring(0, 1);
+                if (fL === '.' || fL === '#') {
+                    html = $(html).html();
+                }
+
+                video = html;
+
+            } else if (isVideo.vk) {
+
+                a = '&autoplay=' + autoplay;
+                if (this.core.s.vkPlayerParams) {
+                    a = a + '&' + $.param(this.core.s.vkPlayerParams);
+                }
+
+                video = '<iframe allow="autoplay" class="lg-video-object lg-vk ' + addClass + '" ' + videoTitle + ' width="560" height="315" src="//vk.com/video_ext.php?' + isVideo.vk[1] + a + '" frameborder="0" allowfullscreen></iframe>';
+
+            }
+
+            return video;
+        };
+
+        Video.prototype.loadVideoOnclick = function($el){
+
+            var _this = this;
             // check slide has poster
-            if ($el.find('.lg-object').hasClass('lg-has-poster')) {
+            if ($el.find('.lg-object').hasClass('lg-has-poster') && $el.find('.lg-object').is(':visible')) {
 
-                // chack already video element present
+                // check already video element present
                 if (!$el.hasClass('lg-has-video')) {
 
-                    $el.addClass('lg-video-palying lg-has-video');
+                    $el.addClass('lg-video-playing lg-has-video');
 
                     var _src;
                     var _html;
@@ -2109,11 +2492,11 @@
                         if (_html) {
                             if (_this.core.s.videojs) {
                                 try {
-                                    videojs(_this.core.$slide.eq(_this.core.index).find('.lg-html5').get(0), {}, function() {
+                                    videojs(_this.core.$slide.eq(_this.core.index).find('.lg-html5').get(0), _this.core.s.videojsOptions, function() {
                                         this.play();
                                     });
                                 } catch (e) {
-                                    console.error('Make sure you have included videojs');
+                                    console.error('lightGallery:- Make sure you have included videojs');
                                 }
                             } else {
                                 _this.core.$slide.eq(_this.core.index).find('.lg-html5').get(0).play();
@@ -2131,7 +2514,7 @@
 
                     } else {
 
-                        _src = _this.core.$items.eq(_this.core.index).attr('data-src');
+                        _src = _this.core.$items.eq(_this.core.index).attr('href') || _this.core.$items.eq(_this.core.index).attr('data-src');
                         _html = _this.core.$items.eq(_this.core.index).attr('data-html');
 
                         _loadVideo(_src, _html);
@@ -2154,148 +2537,174 @@
 
                     var youtubePlayer = $el.find('.lg-youtube').get(0);
                     var vimeoPlayer = $el.find('.lg-vimeo').get(0);
+                    var dailymotionPlayer = $el.find('.lg-dailymotion').get(0);
                     var html5Player = $el.find('.lg-html5').get(0);
                     if (youtubePlayer) {
                         youtubePlayer.contentWindow.postMessage('{"event":"command","func":"playVideo","args":""}', '*');
                     } else if (vimeoPlayer) {
                         try {
-                            $f(vimeoPlayer).api('play');
+                            new Vimeo.Player(vimeoPlayer).play().catch(function(error) {
+                                console.error('error playing the video:', error.name);
+                            });
                         } catch (e) {
-                            console.error('Make sure you have included froogaloop2 js');
+                            console.warn('lightGallery:- Make sure you have included https://github.com/vimeo/player.js');
                         }
+                    } else if (dailymotionPlayer) {
+                        dailymotionPlayer.contentWindow.postMessage('play', '*');
+
                     } else if (html5Player) {
                         if (_this.core.s.videojs) {
                             try {
                                 videojs(html5Player).play();
                             } catch (e) {
-                                console.error('Make sure you have included videojs');
+                                console.error('lightGallery:- Make sure you have included videojs');
                             }
                         } else {
                             html5Player.play();
                         }
                     }
 
-                    $el.addClass('lg-video-palying');
+                    $el.addClass('lg-video-playing');
 
                 }
             }
         };
 
-        if (_this.core.doCss()) {
-            _this.core.$el.on('onSlideClick.lg.tm', function() {
-                var $el = _this.core.$slide.eq(_this.core.index);
-                loadOnClick($el);
-            });
-        } else {
+        Video.prototype.destroy = function() {
+            this.videoLoaded = false;
+        };
 
-            // For IE 9 and bellow
-            _this.core.$slide.on('click.lg', function() {
-                loadOnClick($(this));
-            });
+        function onHasVideo(event, index, src, html) {
+            /*jshint validthis:true */
+            var _this = this;
+            _this.core.$slide.eq(index).find('.lg-video').append(_this.loadVideo(src, 'lg-object', true, index, html));
+            if (html) {
+                if (_this.core.s.videojs) {
+                    try {
+                        videojs(_this.core.$slide.eq(index).find('.lg-html5').get(0), _this.core.s.videojsOptions, function() {
+                            if (!_this.videoLoaded && _this.core.s.autoplayFirstVideo) {
+                                this.play();
+                            }
+                        });
+                    } catch (e) {
+                        console.error('lightGallery:- Make sure you have included videojs');
+                    }
+                } else {
+                    if(!_this.videoLoaded && _this.core.s.autoplayFirstVideo) {
+                        _this.core.$slide.eq(index).find('.lg-html5').get(0).play();
+                    }
+                }
+            }
         }
 
-        _this.core.$el.on('onBeforeSlide.lg.tm', function(event, prevIndex) {
+        function onAferAppendSlide(event, index) {
+            /*jshint validthis:true */
+            var $videoCont = this.core.$slide.eq(index).find('.lg-video-cont');
+            if (!$videoCont.hasClass('lg-has-iframe')) {
+                $videoCont.css('max-width', this.core.s.videoMaxWidth);
+                this.videoLoaded = true;
+            }
+        }
+
+        function onBeforeSlide(event, prevIndex, index) {
+            /*jshint validthis:true */
+            var _this = this;
 
             var $videoSlide = _this.core.$slide.eq(prevIndex);
             var youtubePlayer = $videoSlide.find('.lg-youtube').get(0);
             var vimeoPlayer = $videoSlide.find('.lg-vimeo').get(0);
+            var dailymotionPlayer = $videoSlide.find('.lg-dailymotion').get(0);
+            var vkPlayer = $videoSlide.find('.lg-vk').get(0);
             var html5Player = $videoSlide.find('.lg-html5').get(0);
             if (youtubePlayer) {
                 youtubePlayer.contentWindow.postMessage('{"event":"command","func":"pauseVideo","args":""}', '*');
             } else if (vimeoPlayer) {
                 try {
-                    $f(vimeoPlayer).api('pause');
+                    new Vimeo.Player(vimeoPlayer).pause().catch(function(error) {
+                        console.error('Unable to pause the video:', error.name);
+                    });
                 } catch (e) {
-                    console.error('Make sure you have included froogaloop2 js');
+                    console.warn('lightGallery:- Make sure you have included https://github.com/vimeo/player.js');
                 }
+            } else if (dailymotionPlayer) {
+                dailymotionPlayer.contentWindow.postMessage('pause', '*');
+
             } else if (html5Player) {
                 if (_this.core.s.videojs) {
                     try {
                         videojs(html5Player).pause();
                     } catch (e) {
-                        console.error('Make sure you have included videojs');
+                        console.error('lightGallery:- Make sure you have included videojs');
                     }
                 } else {
                     html5Player.pause();
                 }
+            } if (vkPlayer) {
+                $(vkPlayer).attr('src', $(vkPlayer).attr('src').replace('&autoplay', '&noplay'));
             }
 
-            //$videoSlide.addClass('lg-complete');
-
-        });
-
-        _this.core.$el.on('onAfterSlide.lg.tm', function(event, prevIndex) {
-            _this.core.$slide.eq(prevIndex).removeClass('lg-video-palying');
-        });
-    };
-
-    Video.prototype.loadVideo = function(src, addClass, noposter, index, html) {
-        var video = '';
-        var autoplay = 1;
-        var a = '';
-        var isVideo = this.core.isVideo(src, index) || {};
-
-        // Enable autoplay for first video if poster doesn't exist
-        if (noposter) {
-            if (this.videoLoaded) {
-                autoplay = 0;
+            var _src;
+            if (_this.core.s.dynamic) {
+                _src = _this.core.s.dynamicEl[index].src;
             } else {
-                autoplay = 1;
+                _src = _this.core.$items.eq(index).attr('href') || _this.core.$items.eq(index).attr('data-src');
+
             }
+
+            var _isVideo = _this.core.isVideo(_src, index) || {};
+            if (_isVideo.youtube || _isVideo.vimeo || _isVideo.dailymotion || _isVideo.vk) {
+                _this.core.$outer.addClass('lg-hide-download');
+            }
+
         }
 
-        if (isVideo.youtube) {
+        $.fn.lightGallery.modules.video = Video;
 
-            a = '?wmode=opaque&autoplay=' + autoplay + '&enablejsapi=1';
-            if (this.core.s.youtubePlayerParams) {
-                a = a + '&' + $.param(this.core.s.youtubePlayerParams);
-            }
+    })();
 
-            video = '<iframe class="lg-video-object lg-youtube ' + addClass + '" width="560" height="315" src="//www.youtube.com/embed/' + isVideo.youtube[1] + a + '" frameborder="0" allowfullscreen></iframe>';
 
-        } else if (isVideo.vimeo) {
+}));
 
-            a = '?autoplay=' + autoplay + '&api=1';
-            if (this.core.s.vimeoPlayerParams) {
-                a = a + '&' + $.param(this.core.s.vimeoPlayerParams);
-            }
+/*! lg-zoom - v1.3.0-beta.0 - October-05-2020
+* http://sachinchoolur.github.io/lightGallery
+* Copyright (c) 2020 Sachin N; Licensed GPLv3 */
 
-            video = '<iframe class="lg-video-object lg-vimeo ' + addClass + '" width="560" height="315"  src="http://player.vimeo.com/video/' + isVideo.vimeo[1] + a + '" frameborder="0" webkitAllowFullScreen mozallowfullscreen allowFullScreen></iframe>';
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    // AMD. Register as an anonymous module unless amdModuleId is set
+    define(['jquery'], function (a0) {
+      return (factory(a0));
+    });
+  } else if (typeof module === 'object' && module.exports) {
+    // Node. Does not work with strict CommonJS, but
+    // only CommonJS-like environments that support module.exports,
+    // like Node.
+    module.exports = factory(require('jquery'));
+  } else {
+    factory(root["jQuery"]);
+  }
+}(this, function ($) {
 
-        } else if (isVideo.html5) {
-            var fL = html.substring(0, 1);
-            if (fL === '.' || fL === '#') {
-                html = $(html).html();
-            }
-
-            video = html;
-        }
-
-        return video;
-    };
-
-    Video.prototype.destroy = function() {
-        this.videoLoaded = false;
-    };
-
-    $.fn.lightGallery.modules.video = Video;
-
-})(jQuery, window, document);
-
-/**
- * Zoom Plugin
- * @version 1.2.0
- * @author Sachin N - @sachinchoolur
- * @license MIT License (MIT)
- */
-(function($, window, document, undefined) {
+(function() {
 
     'use strict';
+
+    var getUseLeft = function() {
+        var useLeft = false;
+        var isChrome = navigator.userAgent.match(/Chrom(e|ium)\/([0-9]+)\./);
+        if (isChrome && parseInt(isChrome[2], 10) < 54) {
+            useLeft = true;
+        }
+
+        return useLeft;
+    };
 
     var defaults = {
         scale: 1,
         zoom: true,
-        enableZoomAfter: 300
+        actualSize: true,
+        enableZoomAfter: 300,
+        useLeftForZoom: getUseLeft()
     };
 
     var Zoom = function(element) {
@@ -2306,7 +2715,13 @@
 
         if (this.core.s.zoom && this.core.doCss()) {
             this.init();
+
+            // Store the zoomable timeout value just to clear it while closing
             this.zoomabletimeout = false;
+
+            // Set the initial value center
+            this.pageX = $(window).width() / 2;
+            this.pageY = ($(window).height() / 2) + $(window).scrollTop();
         }
 
         return this;
@@ -2315,7 +2730,17 @@
     Zoom.prototype.init = function() {
 
         var _this = this;
-        var zoomIcons = '<span id="lg-zoom-in" class="lg-icon"></span><span id="lg-zoom-out" class="lg-icon"></span>';
+        var zoomIcons = '<button type="button" aria-label="Zoom in" id="lg-zoom-in" class="lg-icon"></button><button type="button" aria-label="Zoom out" id="lg-zoom-out" class="lg-icon"></button>';
+
+        if (_this.core.s.actualSize) {
+            zoomIcons += '<button type="button" aria-label="Actual size" id="lg-actual-size" class="lg-icon"></button>';
+        }
+
+        if (_this.core.s.useLeftForZoom) {
+            _this.core.$outer.addClass('lg-use-left-for-zoom');
+        } else {
+            _this.core.$outer.addClass('lg-use-transition-for-zoom');
+        }
 
         this.core.$outer.find('.lg-toolbar').append(zoomIcons);
 
@@ -2328,7 +2753,7 @@
             // set _speed value 0 if gallery opened from direct url and if it is first slide
             if ($('body').hasClass('lg-from-hash') && delay) {
 
-                // will execute only one time
+                // will execute only once
                 _speed = 0;
             } else {
 
@@ -2347,43 +2772,84 @@
          * Translate the wrap and scale the image to get better user experience
          *
          * @param {String} scaleVal - Zoom decrement/increment value
-         * @param {Boolean} db - true if zoom called via doubleclick
-         * @todo Currently zoom origin is center it should work from all the directions
          */
-        var zoom = function(scaleVal, db, pageX, pageY) {
+        var zoom = function(scaleVal) {
 
             var $image = _this.core.$outer.find('.lg-current .lg-image');
             var _x;
             var _y;
-            if (db) {
-                _x = pageX - $image.offset().left;
-                _y = pageY - $image.offset().top;
-            } else {
-                _x = $image.width() / 2;
-                _y = $image.height() / 2;
-            }
+
+            // Find offset manually to avoid issue after zoom
+            var offsetX = ($(window).width() - $image.prop('offsetWidth')) / 2;
+            var offsetY = (($(window).height() - $image.prop('offsetHeight')) / 2) + $(window).scrollTop();
+
+            _x = _this.pageX - offsetX;
+            _y = _this.pageY - offsetY;
 
             var x = (scaleVal - 1) * (_x);
             var y = (scaleVal - 1) * (_y);
 
             $image.css('transform', 'scale3d(' + scaleVal + ', ' + scaleVal + ', 1)').attr('data-scale', scaleVal);
 
-            $image.parent().css('transform', 'translate3d(-' + x + 'px, -' + y + 'px, 0)').attr('data-x', x).attr('data-y', y);
+            if (_this.core.s.useLeftForZoom) {
+                $image.parent().css({
+                    left: -x + 'px',
+                    top: -y + 'px'
+                }).attr('data-x', x).attr('data-y', y);
+            } else {
+                $image.parent().css('transform', 'translate3d(-' + x + 'px, -' + y + 'px, 0)').attr('data-x', x).attr('data-y', y);
+            }
         };
 
-        var callScale = function(db, pageX, pageY) {
+        var callScale = function() {
             if (scale > 1) {
                 _this.core.$outer.addClass('lg-zoomed');
             } else {
-                _this.core.$outer.removeClass('lg-zoomed');
+                _this.resetZoom();
             }
 
             if (scale < 1) {
                 scale = 1;
             }
 
-            zoom(scale, db, pageX, pageY);
+            zoom(scale);
         };
+
+        var actualSize = function(event, $image, index, fromIcon) {
+            var w = $image.prop('offsetWidth');
+            var nw;
+            if (_this.core.s.dynamic) {
+                nw = _this.core.s.dynamicEl[index].width || $image[0].naturalWidth || w;
+            } else {
+                nw = _this.core.$items.eq(index).attr('data-width') || $image[0].naturalWidth || w;
+            }
+
+            var _scale;
+
+            if (_this.core.$outer.hasClass('lg-zoomed')) {
+                scale = 1;
+            } else {
+                if (nw > w) {
+                    _scale = nw / w;
+                    scale = _scale || 2;
+                }
+            }
+
+            if (fromIcon) {
+                _this.pageX = $(window).width() / 2;
+                _this.pageY = ($(window).height() / 2) + $(window).scrollTop();
+            } else {
+                _this.pageX = event.pageX || event.originalEvent.targetTouches[0].pageX;
+                _this.pageY = event.pageY || event.originalEvent.targetTouches[0].pageY;
+            }
+
+            callScale();
+            setTimeout(function() {
+                _this.core.$outer.removeClass('lg-grabbing').addClass('lg-grab');
+            }, 10);
+        };
+
+        var tapped = false;
 
         // event triggered after appending slide content
         _this.core.$el.on('onAferAppendSlide.lg.tm.zoom', function(event, index) {
@@ -2391,36 +2857,31 @@
             // Get the current element
             var $image = _this.core.$slide.eq(index).find('.lg-image');
 
-            $image.dblclick(function(event) {
+            $image.on('dblclick', function(event) {
+                actualSize(event, $image, index);
+            });
 
-                var w = $image.width();
-                var nw = _this.core.$items.eq(index).attr('data-width') || $image[0].naturalWidth || w;
-                var _scale;
-
-                if (_this.core.$outer.hasClass('lg-zoomed')) {
-                    scale = 1;
+            $image.on('touchstart', function(event) {
+                if (!tapped) {
+                    tapped = setTimeout(function() {
+                        tapped = null;
+                    }, 300);
                 } else {
-                    if (nw > w) {
-                        _scale = nw / w;
-                        scale = _scale || 2;
-                    }
+                    clearTimeout(tapped);
+                    tapped = null;
+                    actualSize(event, $image, index);
                 }
 
-                callScale(true, event.pageX, event.pageY);
-                setTimeout(function() {
-                    _this.core.$outer.removeClass('lg-grabbing').addClass('lg-grab');
-                }, 10);
+                event.preventDefault();
             });
 
         });
 
         // Update zoom on resize and orientationchange
-        $(window).on('resize.lg.zoom orientationchange.lg.zoom', function() {
-            setTimeout(function() {
-                if (_this.core.$outer.hasClass('lg-zoomed')) {
-                    zoom(scale);
-                }
-            }, 10);
+        $(window).on('resize.lg.zoom scroll.lg.zoom orientationchange.lg.zoom', function() {
+            _this.pageX = $(window).width() / 2;
+            _this.pageY = ($(window).height() / 2) + $(window).scrollTop();
+            zoom(scale);
         });
 
         $('#lg-zoom-out').on('click.lg', function() {
@@ -2437,20 +2898,175 @@
             }
         });
 
+        $('#lg-actual-size').on('click.lg', function(event) {
+            actualSize(event, _this.core.$slide.eq(_this.core.index).find('.lg-image'), _this.core.index, true);
+        });
+
         // Reset zoom on slide change
         _this.core.$el.on('onBeforeSlide.lg.tm', function() {
+            scale = 1;
             _this.resetZoom();
         });
 
         // Drag option after zoom
-        if (!_this.core.isTouch) {
-            _this.zoomDrag();
-        }
+        _this.zoomDrag();
 
-        if (_this.core.isTouch) {
-            _this.zoomSwipe();
-        }
+        _this.zoomSwipe();
 
+    };
+
+    /**
+     * 
+     * @param {Element} el 
+     * @return matrix(cos(X), sin(X), -sin(X), cos(X), 0, 0);
+     * Get the current transform value
+     */
+    Zoom.prototype.getCurrentTransform = function (el) {
+        if (!el) {
+            return 0;
+        }
+        var st = window.getComputedStyle(el, null);
+        var tm = st.getPropertyValue('-webkit-transform') ||
+            st.getPropertyValue('-moz-transform') ||
+            st.getPropertyValue('-ms-transform') ||
+            st.getPropertyValue('-o-transform') ||
+            st.getPropertyValue('transform') ||
+            'none';
+        if (tm !== 'none') {
+            return tm.split('(')[1].split(')')[0].split(',');
+        }
+        return 0;
+    };
+
+    Zoom.prototype.getCurrentRotation = function (el) {
+        if (!el) {
+            return 0;
+        }
+        var values = this.getCurrentTransform(el);
+        if (values) {
+            return Math.round(Math.atan2(values[1], values[0]) * (180 / Math.PI));
+            // If you want rotate in 360
+            //return (angle < 0 ? angle + 360 : angle);
+        }
+        return 0;
+    };
+
+    Zoom.prototype.getModifier = function (rotateValue, axis, el) {
+        var originalRotate = rotateValue;
+        rotateValue = Math.abs(rotateValue);
+        var transformValues = this.getCurrentTransform(el);
+        if (!transformValues) {
+            return 1;
+        }
+        var modifier = 1;
+        if (axis === 'X') {
+            var flipHorizontalValue = Math.sign(parseFloat(transformValues[0]));
+            if (rotateValue === 0 || rotateValue === 180) {
+                modifier = 1;
+            } else if (rotateValue === 90) {
+                if ((originalRotate === -90 && flipHorizontalValue === 1) || (originalRotate === 90 && flipHorizontalValue === -1)) {
+                    modifier = -1;
+                } else {
+                    modifier = 1;
+                }
+            }
+            modifier = modifier * flipHorizontalValue;
+        } else {
+            var flipVerticalValue = Math.sign(parseFloat(transformValues[3]));
+            if (rotateValue === 0 || rotateValue === 180) {
+                modifier = 1;
+            } else if (rotateValue === 90) {
+                var sinX = parseFloat(transformValues[1]);
+                var sinMinusX = parseFloat(transformValues[2]);
+                modifier = Math.sign(sinX * sinMinusX * originalRotate * flipVerticalValue);
+            }
+            modifier = modifier * flipVerticalValue;
+        }
+        return modifier;
+    };
+
+    Zoom.prototype.getImageSize = function ($image, rotateValue, axis) {
+        var imageSizes = {
+            y: 'offsetHeight',
+            x: 'offsetWidth'
+        };
+        if (rotateValue === 90) {
+            // Swap axis 
+            if (axis === 'x') {
+                axis = 'y';
+            } else {
+                axis = 'x';
+            }
+        }
+        return $image.prop(imageSizes[axis]);
+    };
+
+    Zoom.prototype.getDragCords = function (e, rotateValue) {
+        if (rotateValue === 90) {
+            return {
+                x: e.pageY,
+                y: e.pageX
+            };
+        } else {
+            return {
+                x: e.pageX,
+                y: e.pageY
+            };
+        }
+    };
+    Zoom.prototype.getSwipeCords = function (e, rotateValue) {
+        var x = e.originalEvent.targetTouches[0].pageX;
+        var y = e.originalEvent.targetTouches[0].pageY;
+        if (rotateValue === 90) {
+            return {
+                x: y,
+                y: x
+            };
+        } else {
+            return {
+                x: x,
+                y: y
+            };
+        }
+    };
+
+    Zoom.prototype.getPossibleDragCords = function ($image, rotateValue) {
+
+        var minY = (this.core.$outer.find('.lg').height() - this.getImageSize($image, rotateValue, 'y')) / 2;
+        var maxY = Math.abs((this.getImageSize($image, rotateValue, 'y') * Math.abs($image.attr('data-scale'))) - this.core.$outer.find('.lg').height() + minY);
+        var minX = (this.core.$outer.find('.lg').width() - this.getImageSize($image, rotateValue, 'x')) / 2;
+        var maxX = Math.abs((this.getImageSize($image, rotateValue, 'x') * Math.abs($image.attr('data-scale'))) - this.core.$outer.find('.lg').width() + minX);
+        if (rotateValue === 90) {
+            return {
+                minY: minX,
+                maxY: maxX,
+                minX: minY,
+                maxX: maxY,
+            };
+        } else {
+            return {
+                minY: minY,
+                maxY: maxY,
+                minX: minX,
+                maxX: maxX,
+            };
+        }
+    };
+
+    Zoom.prototype.getDragAllowedAxises = function ($image, rotateValue) {
+        var allowY = this.getImageSize($image, rotateValue, 'y') * $image.attr('data-scale') > this.core.$outer.find('.lg').height();
+        var allowX = this.getImageSize($image, rotateValue, 'x') * $image.attr('data-scale') > this.core.$outer.find('.lg').width();
+        if (rotateValue === 90) {
+            return {
+                allowX: allowY,
+                allowY: allowX
+            };
+        } else {
+            return {
+                allowX: allowX,
+                allowY: allowY
+            };
+        }
     };
 
     // Reset zoom effect
@@ -2458,6 +3074,10 @@
         this.core.$outer.removeClass('lg-zoomed');
         this.core.$slide.find('.lg-img-wrap').removeAttr('style data-x data-y');
         this.core.$slide.find('.lg-image').removeAttr('style data-scale');
+
+        // Reset pagx pagy values to center
+        this.pageX = $(window).width() / 2;
+        this.pageY = ($(window).height() / 2) + $(window).scrollTop();
     };
 
     Zoom.prototype.zoomSwipe = function() {
@@ -2472,19 +3092,24 @@
         // Allow Y direction drag
         var allowY = false;
 
+        var rotateValue = 0;
+        var rotateEl;
+
         _this.core.$slide.on('touchstart.lg', function(e) {
 
             if (_this.core.$outer.hasClass('lg-zoomed')) {
                 var $image = _this.core.$slide.eq(_this.core.index).find('.lg-object');
 
-                allowY = $image.outerHeight() * $image.attr('data-scale') > _this.core.$outer.find('.lg').height();
-                allowX = $image.outerWidth() * $image.attr('data-scale') > _this.core.$outer.find('.lg').width();
+                rotateEl = _this.core.$slide.eq(_this.core.index).find('.lg-img-rotate')[0];
+                rotateValue = _this.getCurrentRotation(rotateEl);    
+
+                var dragAllowedAxises = _this.getDragAllowedAxises($image, Math.abs(rotateValue));
+                allowY = dragAllowedAxises.allowY;
+                allowX = dragAllowedAxises.allowX;
+    
                 if ((allowX || allowY)) {
                     e.preventDefault();
-                    startCoords = {
-                        x: e.originalEvent.targetTouches[0].pageX,
-                        y: e.originalEvent.targetTouches[0].pageY
-                    };
+                    startCoords = _this.getSwipeCords(e, Math.abs(rotateValue));
                 }
             }
 
@@ -2500,29 +3125,36 @@
 
                 e.preventDefault();
                 isMoved = true;
-                endCoords = e.originalEvent.targetTouches[0].pageX;
 
-                endCoords = {
-                    x: e.originalEvent.targetTouches[0].pageX,
-                    y: e.originalEvent.targetTouches[0].pageY
-                };
+                endCoords = _this.getSwipeCords(e, Math.abs(rotateValue));
 
                 // reset opacity and transition duration
                 _this.core.$outer.addClass('lg-zoom-dragging');
 
                 if (allowY) {
-                    distanceY = (-Math.abs(_$el.attr('data-y'))) + (endCoords.y - startCoords.y);
+                    distanceY = (-Math.abs(_$el.attr('data-y'))) + ((endCoords.y - startCoords.y) * _this.getModifier(rotateValue, 'Y', rotateEl));
                 } else {
                     distanceY = -Math.abs(_$el.attr('data-y'));
                 }
 
                 if (allowX) {
-                    distanceX = (-Math.abs(_$el.attr('data-x'))) + (endCoords.x - startCoords.x);
+                    distanceX = (-Math.abs(_$el.attr('data-x'))) + ((endCoords.x - startCoords.x) * _this.getModifier(rotateValue, 'X', rotateEl));
+
                 } else {
                     distanceX = -Math.abs(_$el.attr('data-x'));
                 }
 
-                _$el.css('transform', 'translate3d(' + distanceX + 'px, ' + distanceY + 'px, 0)');
+                if ((Math.abs(endCoords.x - startCoords.x) > 15) || (Math.abs(endCoords.y - startCoords.y) > 15)) {
+
+                    if (_this.core.s.useLeftForZoom) {
+                        _$el.css({
+                            left: distanceX + 'px',
+                            top: distanceY + 'px'
+                        });
+                    } else {
+                        _$el.css('transform', 'translate3d(' + distanceX + 'px, ' + distanceY + 'px, 0)');
+                    }
+                }
 
             }
 
@@ -2533,7 +3165,7 @@
                 if (isMoved) {
                     isMoved = false;
                     _this.core.$outer.removeClass('lg-zoom-dragging');
-                    _this.touchendZoom(startCoords, endCoords, allowX, allowY);
+                    _this.touchendZoom(startCoords, endCoords, allowX, allowY, rotateValue);
 
                 }
             }
@@ -2555,21 +3187,22 @@
         // Allow Y direction drag
         var allowY = false;
 
+        var rotateValue = 0;
+        var rotateEl;
+        
         _this.core.$slide.on('mousedown.lg.zoom', function(e) {
-
+            rotateEl = _this.core.$slide.eq(_this.core.index).find('.lg-img-rotate')[0];
+            rotateValue = _this.getCurrentRotation(rotateEl);
             // execute only on .lg-object
             var $image = _this.core.$slide.eq(_this.core.index).find('.lg-object');
-
-            allowY = $image.outerHeight() * $image.attr('data-scale') > _this.core.$outer.find('.lg').height();
-            allowX = $image.outerWidth() * $image.attr('data-scale') > _this.core.$outer.find('.lg').width();
+            var dragAllowedAxises = _this.getDragAllowedAxises($image, Math.abs(rotateValue));
+            allowY = dragAllowedAxises.allowY;
+            allowX = dragAllowedAxises.allowX;
 
             if (_this.core.$outer.hasClass('lg-zoomed')) {
                 if ($(e.target).hasClass('lg-object') && (allowX || allowY)) {
                     e.preventDefault();
-                    startCoords = {
-                        x: e.pageX,
-                        y: e.pageY
-                    };
+                    startCoords = _this.getDragCords(e, Math.abs(rotateValue));
 
                     isDraging = true;
 
@@ -2589,27 +3222,31 @@
                 var distanceY;
 
                 isMoved = true;
-                endCoords = {
-                    x: e.pageX,
-                    y: e.pageY
-                };
+                endCoords = _this.getDragCords(e, Math.abs(rotateValue));
 
                 // reset opacity and transition duration
                 _this.core.$outer.addClass('lg-zoom-dragging');
 
                 if (allowY) {
-                    distanceY = (-Math.abs(_$el.attr('data-y'))) + (endCoords.y - startCoords.y);
+                    distanceY = (-Math.abs(_$el.attr('data-y'))) + ((endCoords.y - startCoords.y) * _this.getModifier(rotateValue, 'Y', rotateEl));
                 } else {
                     distanceY = -Math.abs(_$el.attr('data-y'));
                 }
-
+                
                 if (allowX) {
-                    distanceX = (-Math.abs(_$el.attr('data-x'))) + (endCoords.x - startCoords.x);
+                    distanceX = (-Math.abs(_$el.attr('data-x'))) + ((endCoords.x - startCoords.x) * _this.getModifier(rotateValue, 'X', rotateEl));
                 } else {
                     distanceX = -Math.abs(_$el.attr('data-x'));
                 }
 
-                _$el.css('transform', 'translate3d(' + distanceX + 'px, ' + distanceY + 'px, 0)');
+                if (_this.core.s.useLeftForZoom) {
+                    _$el.css({
+                        left: distanceX + 'px',
+                        top: distanceY + 'px'
+                    });
+                } else {
+                    _$el.css('transform', 'translate3d(' + distanceX + 'px, ' + distanceY + 'px, 0)');
+                }
             }
         });
 
@@ -2621,11 +3258,8 @@
 
                 // Fix for chrome mouse move on click
                 if (isMoved && ((startCoords.x !== endCoords.x) || (startCoords.y !== endCoords.y))) {
-                    endCoords = {
-                        x: e.pageX,
-                        y: e.pageY
-                    };
-                    _this.touchendZoom(startCoords, endCoords, allowX, allowY);
+                    endCoords = _this.getDragCords(e, Math.abs(rotateValue));
+                    _this.touchendZoom(startCoords, endCoords, allowX, allowY, rotateValue);
 
                 }
 
@@ -2637,47 +3271,54 @@
         });
     };
 
-    Zoom.prototype.touchendZoom = function(startCoords, endCoords, allowX, allowY) {
+    Zoom.prototype.touchendZoom = function(startCoords, endCoords, allowX, allowY, rotateValue) {
 
         var _this = this;
         var _$el = _this.core.$slide.eq(_this.core.index).find('.lg-img-wrap');
         var $image = _this.core.$slide.eq(_this.core.index).find('.lg-object');
-        var distanceX = (-Math.abs(_$el.attr('data-x'))) + (endCoords.x - startCoords.x);
-        var distanceY = (-Math.abs(_$el.attr('data-y'))) + (endCoords.y - startCoords.y);
-        var minY = (_this.core.$outer.find('.lg').height() - $image.outerHeight()) / 2;
-        var maxY = Math.abs(($image.outerHeight() * Math.abs($image.attr('data-scale'))) - _this.core.$outer.find('.lg').height() + minY);
-        var minX = (_this.core.$outer.find('.lg').width() - $image.outerWidth()) / 2;
-        var maxX = Math.abs(($image.outerWidth() * Math.abs($image.attr('data-scale'))) - _this.core.$outer.find('.lg').width() + minX);
-
-        if (allowY) {
-            if (distanceY <= -maxY) {
-                distanceY = -maxY;
-            } else if (distanceY >= -minY) {
-                distanceY = -minY;
+        var rotateEl = _this.core.$slide.eq(_this.core.index).find('.lg-img-rotate')[0];
+        var distanceX = (-Math.abs(_$el.attr('data-x'))) + ((endCoords.x - startCoords.x) * _this.getModifier(rotateValue, 'X', rotateEl));
+        var distanceY = (-Math.abs(_$el.attr('data-y'))) + ((endCoords.y - startCoords.y) * _this.getModifier(rotateValue, 'Y', rotateEl));
+        var possibleDragCords = _this.getPossibleDragCords($image, Math.abs(rotateValue));
+        if ((Math.abs(endCoords.x - startCoords.x) > 15) || (Math.abs(endCoords.y - startCoords.y) > 15)) {
+            if (allowY) {
+                if (distanceY <= -possibleDragCords.maxY) {
+                    distanceY = -possibleDragCords.maxY;
+                } else if (distanceY >= -possibleDragCords.minY) {
+                    distanceY = -possibleDragCords.minY;
+                }
             }
-        }
 
-        if (allowX) {
-            if (distanceX <= -maxX) {
-                distanceX = -maxX;
-            } else if (distanceX >= -minX) {
-                distanceX = -minX;
+            if (allowX) {
+                if (distanceX <= -possibleDragCords.maxX) {
+                    distanceX = -possibleDragCords.maxX;
+                } else if (distanceX >= -possibleDragCords.minX) {
+                    distanceX = -possibleDragCords.minX;
+                }
             }
-        }
 
-        if (allowY) {
-            _$el.attr('data-y', Math.abs(distanceY));
-        } else {
-            distanceY = -Math.abs(_$el.attr('data-y'));
-        }
+            if (allowY) {
+                _$el.attr('data-y', Math.abs(distanceY));
+            } else {
+                distanceY = -Math.abs(_$el.attr('data-y'));
+            }
 
-        if (allowX) {
-            _$el.attr('data-x', Math.abs(distanceX));
-        } else {
-            distanceX = -Math.abs(_$el.attr('data-x'));
-        }
+            if (allowX) {
+                _$el.attr('data-x', Math.abs(distanceX));
+            } else {
+                distanceX = -Math.abs(_$el.attr('data-x'));
+            }
 
-        _$el.css('transform', 'translate3d(' + distanceX + 'px, ' + distanceY + 'px, 0)');
+            if (_this.core.s.useLeftForZoom) {
+                _$el.css({
+                    left: distanceX + 'px',
+                    top: distanceY + 'px'
+                });
+            } else {
+                _$el.css('transform', 'translate3d(' + distanceX + 'px, ' + distanceY + 'px, 0)');
+            }
+
+        }
     };
 
     Zoom.prototype.destroy = function() {
@@ -2696,9 +3337,32 @@
 
     $.fn.lightGallery.modules.zoom = Zoom;
 
-})(jQuery, window, document);
+})();
 
-(function($, window, document, undefined) {
+
+}));
+
+/*! lg-hash - v1.0.4 - 2017-12-20
+* http://sachinchoolur.github.io/lightGallery
+* Copyright (c) 2017 Sachin N; Licensed GPLv3 */
+
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    // AMD. Register as an anonymous module unless amdModuleId is set
+    define(['jquery'], function (a0) {
+      return (factory(a0));
+    });
+  } else if (typeof exports === 'object') {
+    // Node. Does not work with strict CommonJS, but
+    // only CommonJS-like environments that support module.exports,
+    // like Node.
+    module.exports = factory(require('jquery'));
+  } else {
+    factory(jQuery);
+  }
+}(this, function ($) {
+
+(function() {
 
     'use strict';
 
@@ -2726,17 +3390,21 @@
 
         // Change hash value on after each slide transition
         _this.core.$el.on('onAfterSlide.lg.tm', function(event, prevIndex, index) {
-            window.location.hash = 'lg=' + _this.core.s.galleryId + '&slide=' + index;
+            if (history.replaceState) {
+                history.replaceState(null, null, window.location.pathname + window.location.search + '#lg=' + _this.core.s.galleryId + '&slide=' + index);
+            } else {
+                window.location.hash = 'lg=' + _this.core.s.galleryId + '&slide=' + index;
+            }
         });
 
         // Listen hash change and change the slide according to slide value
-        $(window).on('hashchange', function() {
+        $(window).on('hashchange.lg.hash', function() {
             _hash = window.location.hash;
             var _idx = parseInt(_hash.split('&slide=')[1], 10);
 
             // it galleryId doesn't exist in the url close the gallery
             if ((_hash.indexOf('lg=' + _this.core.s.galleryId) > -1)) {
-                _this.core.slide(_idx);
+                _this.core.slide(_idx, false, false);
             } else if (_this.core.lGalleryOn) {
                 _this.core.destroy();
             }
@@ -2746,19 +3414,322 @@
 
     Hash.prototype.destroy = function() {
 
+        if (!this.core.s.hash) {
+            return;
+        }
+
         // Reset to old hash value
         if (this.oldHash && this.oldHash.indexOf('lg=' + this.core.s.galleryId) < 0) {
-            window.location.hash = this.oldHash;
+            if (history.replaceState) {
+                history.replaceState(null, null, this.oldHash);
+            } else {
+                window.location.hash = this.oldHash;
+            }
         } else {
-            if (history.pushState) {
-                history.pushState('', document.title, window.location.pathname + window.location.search);
+            if (history.replaceState) {
+                history.replaceState(null, document.title, window.location.pathname + window.location.search);
             } else {
                 window.location.hash = '';
             }
         }
 
+        this.core.$el.off('.lg.hash');
+
     };
 
     $.fn.lightGallery.modules.hash = Hash;
 
-})(jQuery, window, document);
+})();
+
+
+}));
+
+/*! lg-share - v1.2.1 - 2020-06-13
+* http://sachinchoolur.github.io/lightGallery
+* Copyright (c) 2020 Sachin N; Licensed GPLv3 */
+
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    // AMD. Register as an anonymous module unless amdModuleId is set
+    define(['jquery'], function (a0) {
+      return (factory(a0));
+    });
+  } else if (typeof module === 'object' && module.exports) {
+    // Node. Does not work with strict CommonJS, but
+    // only CommonJS-like environments that support module.exports,
+    // like Node.
+    module.exports = factory(require('jquery'));
+  } else {
+    factory(root["jQuery"]);
+  }
+}(this, function ($) {
+
+(function() {
+
+    'use strict';
+
+    var defaults = {
+        share: true,
+        facebook: true,
+        facebookDropdownText: 'Facebook',
+        twitter: true,
+        twitterDropdownText: 'Twitter',
+        googlePlus: true,
+        googlePlusDropdownText: 'GooglePlus',
+        pinterest: true,
+        pinterestDropdownText: 'Pinterest'
+    };
+
+    var Share = function(element) {
+
+        this.core = $(element).data('lightGallery');
+
+        this.core.s = $.extend({}, defaults, this.core.s);
+        if (this.core.s.share) {
+            this.init();
+        }
+
+        return this;
+    };
+
+    Share.prototype.init = function() {
+        var _this = this;
+
+        var shareHtml = '<button type="button" aria-label="Share" id="lg-share" class="lg-icon" aria-haspopup="true" aria-expanded="false">' +
+            '<ul class="lg-dropdown" style="position: absolute;">';
+        shareHtml += _this.core.s.facebook ? '<li><a id="lg-share-facebook" target="_blank"><span class="lg-icon"></span><span class="lg-dropdown-text">' + this.core.s.facebookDropdownText + '</span></a></li>' : '';
+        shareHtml += _this.core.s.twitter ? '<li><a id="lg-share-twitter" target="_blank"><span class="lg-icon"></span><span class="lg-dropdown-text">' + this.core.s.twitterDropdownText + '</span></a></li>' : '';
+        shareHtml += _this.core.s.googlePlus ? '<li><a id="lg-share-googleplus" target="_blank"><span class="lg-icon"></span><span class="lg-dropdown-text">' + this.core.s.googlePlusDropdownText + '</span></a></li>' : '';
+        shareHtml += _this.core.s.pinterest ? '<li><a id="lg-share-pinterest" target="_blank"><span class="lg-icon"></span><span class="lg-dropdown-text">' + this.core.s.pinterestDropdownText + '</span></a></li>' : '';
+        shareHtml += '</ul></button>';
+
+        this.core.$outer.find('.lg-toolbar').append(shareHtml);
+        this.core.$outer.find('.lg').append('<div id="lg-dropdown-overlay"></div>');
+        $('#lg-share').on('click.lg', function(){
+            _this.core.$outer.toggleClass('lg-dropdown-active');
+            var ariaExpanded = $('#lg-share').attr('aria-expanded');
+            $('#lg-share').attr('aria-expanded', ariaExpanded === 'true' ? false: true);
+        });
+
+        $('#lg-dropdown-overlay').on('click.lg', function(){
+            _this.core.$outer.removeClass('lg-dropdown-active');
+            $('#lg-share').attr('aria-expanded', false);
+        });
+
+        _this.core.$el.on('onAfterSlide.lg.tm', function(event, prevIndex, index) {
+
+            setTimeout(function() {
+
+                $('#lg-share-facebook').attr('href', 'https://www.facebook.com/sharer/sharer.php?u=' + (encodeURIComponent(_this.getSahreProps(index, 'facebookShareUrl') || window.location.href)));
+
+                $('#lg-share-twitter').attr('href', 'https://twitter.com/intent/tweet?text=' + _this.getSahreProps(index, 'tweetText') + '&url=' + (encodeURIComponent(_this.getSahreProps(index, 'twitterShareUrl') || window.location.href)));
+
+                $('#lg-share-googleplus').attr('href', 'https://plus.google.com/share?url=' + (encodeURIComponent(_this.getSahreProps(index, 'googleplusShareUrl') || window.location.href)));
+
+                $('#lg-share-pinterest').attr('href', 'http://www.pinterest.com/pin/create/button/?url=' + (encodeURIComponent(_this.getSahreProps(index, 'pinterestShareUrl') || window.location.href)) + '&media=' + encodeURIComponent(_this.getSahreProps(index, 'src')) + '&description=' + _this.getSahreProps(index, 'pinterestText'));
+
+            }, 100);
+        });
+    };
+
+    Share.prototype.getSahreProps = function(index, prop){
+        var shareProp = '';
+        if(this.core.s.dynamic) {
+            shareProp = this.core.s.dynamicEl[index][prop];
+        } else {
+            var _href = this.core.$items.eq(index).attr('href');
+            var _prop = this.core.$items.eq(index).data(prop);
+            shareProp = prop === 'src' ? _href || _prop : _prop;
+        }
+        return shareProp;
+    };
+
+    Share.prototype.destroy = function() {
+
+    };
+
+    $.fn.lightGallery.modules.share = Share;
+
+})();
+
+
+
+}));
+
+/*! lg-rotate - v1.2.1-beta.0 - 2020-10-05
+* http://sachinchoolur.github.io/lightGallery
+* Copyright (c) 2020 Sachin N; Licensed GPLv3 */
+
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    // AMD. Register as an anonymous module unless amdModuleId is set
+    define(['jquery'], function (a0) {
+      return (factory(a0));
+    });
+  } else if (typeof module === 'object' && module.exports) {
+    // Node. Does not work with strict CommonJS, but
+    // only CommonJS-like environments that support module.exports,
+    // like Node.
+    module.exports = factory(require('jquery'));
+  } else {
+    factory(root["jQuery"]);
+  }
+}(this, function ($) {
+
+(function () {
+    'use strict';
+
+    var defaults = {
+        rotate: true,
+        rotateLeft: true,
+        rotateRight: true,
+        flipHorizontal: true,
+        flipVertical: true,
+    };
+
+    var Rotate = function (element) {
+        this.core = $(element).data('lightGallery');
+
+        this.core.s = $.extend({}, defaults, this.core.s);
+
+        if (this.core.s.rotate && this.core.doCss()) {
+            this.init();
+        }
+
+        return this;
+    };
+
+    Rotate.prototype.buildTemplates = function () {
+        var rotateIcons = '';
+        if (this.core.s.flipVertical) {
+            rotateIcons += '<button aria-label="Flip vertical" class="lg-flip-ver lg-icon"></button>';
+        }
+        if (this.core.s.flipHorizontal) {
+            rotateIcons += '<button aria-label="flip horizontal" class="lg-flip-hor lg-icon"></button>';
+        }
+        if (this.core.s.rotateLeft) {
+            rotateIcons += '<button aria-label="Rotate left" class="lg-rotate-left lg-icon"></button>';
+        }
+        if (this.core.s.rotateRight) {
+            rotateIcons += '<button aria-label="Rotate right" class="lg-rotate-right lg-icon"></button>';
+        }
+        this.core.$outer.find('.lg-toolbar').append(rotateIcons);
+    };
+
+    Rotate.prototype.init = function () {
+        var _this = this;
+        this.buildTemplates();
+
+        // Save rotate config for each item to persist its rotate, flip values
+        // even after navigating to diferent slides
+        this.rotateValuesList = {};
+
+
+        // event triggered after appending slide content
+        this.core.$el.on('onAferAppendSlide.lg.tm.rotate', function (event, index) {
+            // Get the current element
+            var $imageWrap = _this.core.$slide.eq(index).find('.lg-img-wrap');
+            $imageWrap.wrap('<div class="lg-img-rotate"></div>');
+        });
+
+        this.core.$outer
+            .find('.lg-rotate-left')
+            .on('click.lg', this.rotateLeft.bind(this));
+
+        this.core.$outer
+            .find('.lg-rotate-right')
+            .on('click.lg', this.rotateRight.bind(this));
+        this.core.$outer
+            .find('.lg-flip-hor')
+            .on('click.lg', this.flipHorizontal.bind(this));
+
+        this.core.$outer
+            .find('.lg-flip-ver')
+            .on('click.lg', this.flipVertical.bind(this));
+
+        // Reset rotate on slide change
+        this.core.$el.on('onBeforeSlide.lg.tm.rotate', function (event, prevIndex, index) {
+            if (!_this.rotateValuesList[index]) {
+                _this.rotateValuesList[index] = {
+                    rotate: 0,
+                    flipHorizontal: 1,
+                    flipVertical: 1,
+                };
+            }
+        });
+    };
+
+    Rotate.prototype.applyStyles = function () {
+        var $image = this.core.$slide.eq(this.core.index).find('.lg-img-rotate');
+        $image.css(
+            'transform',
+            'rotate(' + this.rotateValuesList[this.core.index].rotate + 'deg)' +
+            ' scale3d(' + this.rotateValuesList[this.core.index].flipHorizontal +
+            ', ' + this.rotateValuesList[this.core.index].flipVertical + ', 1)'
+        );
+    };
+
+    Rotate.prototype.getCurrentRotation = function (el) {
+        if (!el) {
+            return 0;
+        }
+        var st = window.getComputedStyle(el, null);
+        var tm = st.getPropertyValue('-webkit-transform') ||
+            st.getPropertyValue('-moz-transform') ||
+            st.getPropertyValue('-ms-transform') ||
+            st.getPropertyValue('-o-transform') ||
+            st.getPropertyValue('transform') ||
+            'none';
+        if (tm !== 'none') {
+            var values = tm.split('(')[1].split(')')[0].split(',');
+            if (values) {
+                var angle = Math.round(Math.atan2(values[1], values[0]) * (180 / Math.PI));
+                return (angle < 0 ? angle + 360 : angle);
+            }
+        }
+        return 0;
+    };
+
+    Rotate.prototype.rotateLeft = function () {
+        this.rotateValuesList[this.core.index].rotate -= 90;
+        this.applyStyles();
+    };
+
+    Rotate.prototype.rotateRight = function () {
+        this.rotateValuesList[this.core.index].rotate += 90;
+        this.applyStyles();
+    };
+
+    Rotate.prototype.flipHorizontal = function () {
+        var $image = this.core.$slide.eq(this.core.index).find('.lg-img-rotate')[0];
+        var currentRotation = this.getCurrentRotation($image);
+        var rotateAxis = 'flipHorizontal';
+        if (currentRotation === 90 || currentRotation === 270) {
+            rotateAxis = 'flipVertical';
+        }
+        this.rotateValuesList[this.core.index][rotateAxis] *= -1;
+        this.applyStyles();
+    };
+
+    Rotate.prototype.flipVertical = function () {
+        var $image = this.core.$slide.eq(this.core.index).find('.lg-img-rotate')[0];
+        var currentRotation = this.getCurrentRotation($image);
+        var rotateAxis = 'flipVertical';
+        if (currentRotation === 90 || currentRotation === 270) {
+            rotateAxis = 'flipHorizontal';
+        }
+        this.rotateValuesList[this.core.index][rotateAxis] *= -1;
+        this.applyStyles();
+    };
+
+    Rotate.prototype.destroy = function () {
+        // Unbind all events added by lightGallery rotate plugin
+        this.core.$el.off('.lg.tm.rotate');
+        this.rotateValuesList = {};
+    };
+
+    $.fn.lightGallery.modules.rotate = Rotate;
+})();
+
+
+}));

@@ -2,7 +2,7 @@
   "name": "lightgallery",
   "title": "jQuery lightgallery",
   "description": "JQuery lightGallery is a lightweight jQuery lightbox gallery for displaying image and video gallery",
-  "version": "1.1.5",
+  "version": "1.4.0",
   "homepage": "https://github.com/sachinchoolur/lightGallery",
   "author": {
     "name": "Sachin N",
@@ -15,12 +15,11 @@
   "bugs": "",
   "licenses": [
     {
-      "type": "MIT",
-      "url": "http://opensource.org/licenses/MIT"
+      "type": "GPLv3"
     }
   ],
   "dependencies": {
-    "jquery": "~1.7.0"
+    "jquery": ">=1.7.0"
   },
   "keywords": [
     "jquery-plugin"

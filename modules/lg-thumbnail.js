@@ -1,7 +1,24 @@
-/*! lightgallery - v1.2.0 - 2015-08-26
-* http://sachinchoolur.github.io/lightGallery/
-* Copyright (c) 2015 Sachin N; Licensed Apache 2.0 */
-(function($, window, document, undefined) {
+/*! lg-thumbnail - v1.2.1 - 2020-06-13
+* http://sachinchoolur.github.io/lightGallery
+* Copyright (c) 2020 Sachin N; Licensed GPLv3 */
+
+(function (root, factory) {
+  if (typeof define === 'function' && define.amd) {
+    // AMD. Register as an anonymous module unless amdModuleId is set
+    define(['jquery'], function (a0) {
+      return (factory(a0));
+    });
+  } else if (typeof module === 'object' && module.exports) {
+    // Node. Does not work with strict CommonJS, but
+    // only CommonJS-like environments that support module.exports,
+    // like Node.
+    module.exports = factory(require('jquery'));
+  } else {
+    factory(root["jQuery"]);
+  }
+}(this, function ($) {
+
+(function() {
 
     'use strict';
 
@@ -12,12 +29,14 @@
         currentPagerPosition: 'middle',
 
         thumbWidth: 100,
+        thumbHeight: '80px',
         thumbContHeight: 100,
         thumbMargin: 5,
 
         exThumbImage: false,
         showThumbByDefault: true,
         toogleThumb: true,
+        pullCaptionUp: true,
 
         enableThumbDrag: true,
         enableThumbSwipe: true,
@@ -27,7 +46,9 @@
         youtubeThumbSize: 1,
 
         loadVimeoThumbnail: true,
-        vimeoThumbSize: 'thumbnail_small'
+        vimeoThumbSize: 'thumbnail_small',
+
+        loadDailymotionThumbnail: true
     };
 
     var Thumbnail = function(element) {
@@ -44,6 +65,10 @@
         this.thumbTotalWidth = (this.core.$items.length * (this.core.s.thumbWidth + this.core.s.thumbMargin));
         this.thumbIndex = this.core.index;
 
+        if (this.core.s.animateThumb) {
+            this.core.s.thumbHeight = '100%';
+        }
+
         // Thumbnail animation value
         this.left = 0;
 
@@ -53,18 +78,25 @@
     };
 
     Thumbnail.prototype.init = function() {
+        var _this = this;
         if (this.core.s.thumbnail && this.core.$items.length > 1) {
             if (this.core.s.showThumbByDefault) {
-                this.core.$outer.addClass('lg-thumb-open');
+                setTimeout(function(){
+                    _this.core.$outer.addClass('lg-thumb-open');
+                }, 700);
+            }
+
+            if (this.core.s.pullCaptionUp) {
+                this.core.$outer.addClass('lg-pull-caption-up');
             }
 
             this.build();
-            if (this.core.s.animateThumb) {
-                if (this.core.s.enableThumbDrag && !this.core.isTouch && this.core.doCss()) {
+            if (this.core.s.animateThumb && this.core.doCss()) {
+                if (this.core.s.enableThumbDrag) {
                     this.enableThumbDrag();
                 }
 
-                if (this.core.s.enableThumbSwipe && this.core.isTouch && this.core.doCss()) {
+                if (this.core.s.enableThumbSwipe) {
                     this.enableThumbSwipe();
                 }
 
@@ -81,22 +113,22 @@
     Thumbnail.prototype.build = function() {
         var _this = this;
         var thumbList = '';
-        var viemoErrorThumbSize = '';
+        var vimeoErrorThumbSize = '';
         var $thumb;
         var html = '<div class="lg-thumb-outer">' +
-            '<div class="lg-thumb group">' +
+            '<div class="lg-thumb lg-group">' +
             '</div>' +
             '</div>';
 
         switch (this.core.s.vimeoThumbSize) {
             case 'thumbnail_large':
-                viemoErrorThumbSize = '640';
+                vimeoErrorThumbSize = '640';
                 break;
             case 'thumbnail_medium':
-                viemoErrorThumbSize = '200x150';
+                vimeoErrorThumbSize = '200x150';
                 break;
             case 'thumbnail_small':
-                viemoErrorThumbSize = '100x75';
+                vimeoErrorThumbSize = '100x75';
         }
 
         _this.core.$outer.addClass('lg-has-thumb');
@@ -122,17 +154,23 @@
             var thumbImg;
             var vimeoId = '';
 
-            if (isVideo.youtube || isVideo.vimeo) {
+            if (isVideo.youtube || isVideo.vimeo || isVideo.dailymotion) {
                 if (isVideo.youtube) {
                     if (_this.core.s.loadYoutubeThumbnail) {
-                        thumbImg = 'http://img.youtube.com/vi/' + isVideo.youtube[1] + '/' + _this.core.s.youtubeThumbSize + '.jpg';
+                        thumbImg = '//img.youtube.com/vi/' + isVideo.youtube[1] + '/' + _this.core.s.youtubeThumbSize + '.jpg';
                     } else {
                         thumbImg = thumb;
                     }
                 } else if (isVideo.vimeo) {
                     if (_this.core.s.loadVimeoThumbnail) {
-                        thumbImg = 'https://i.vimeocdn.com/video/error_' + viemoErrorThumbSize + '.jpg';
+                        thumbImg = '//i.vimeocdn.com/video/error_' + vimeoErrorThumbSize + '.jpg';
                         vimeoId = isVideo.vimeo[1];
+                    } else {
+                        thumbImg = thumb;
+                    }
+                } else if (isVideo.dailymotion) {
+                    if (_this.core.s.loadDailymotionThumbnail) {
+                        thumbImg = '//www.dailymotion.com/thumbnail/video/' + isVideo.dailymotion[1];
                     } else {
                         thumbImg = thumb;
                     }
@@ -141,7 +179,7 @@
                 thumbImg = thumb;
             }
 
-            thumbList += '<div data-vimoe-id="' + vimeoId + '" class="lg-thumb-item" style="width:' + _this.core.s.thumbWidth + 'px; margin-right: ' + _this.core.s.thumbMargin + 'px"><img src="' + thumbImg + '" /></div>';
+            thumbList += '<div data-vimeo-id="' + vimeoId + '" class="lg-thumb-item" style="width:' + _this.core.s.thumbWidth + 'px; height: ' + _this.core.s.thumbHeight + '; margin-right: ' + _this.core.s.thumbMargin + 'px"><img src="' + thumbImg + '" /></div>';
             vimeoId = '';
         }
 
@@ -168,10 +206,10 @@
         // Load vimeo thumbnails
         $thumb.each(function() {
             var $this = $(this);
-            var vimeoVideoId = $this.attr('data-vimoe-id');
+            var vimeoVideoId = $this.attr('data-vimeo-id');
 
             if (vimeoVideoId) {
-                $.getJSON('http://www.vimeo.com/api/v2/video/' + vimeoVideoId + '.json?callback=?', {
+                $.getJSON('//www.vimeo.com/api/v2/video/' + vimeoVideoId + '.json?callback=?', {
                     format: 'json'
                 }, function(data) {
                     $this.find('img').attr('src', data[0][_this.core.s.vimeoThumbSize]);
@@ -194,7 +232,7 @@
                 // Go to slide if browser does not support css transitions
                 if ((_this.thumbClickable && !_this.core.lgBusy) || !_this.core.doCss()) {
                     _this.core.index = _$this.index();
-                    _this.core.slide(_this.core.index, false, true);
+                    _this.core.slide(_this.core.index, false, true, false);
                 }
             }, 50);
         });
@@ -405,7 +443,7 @@
         var _this = this;
         if (_this.core.s.toogleThumb) {
             _this.core.$outer.addClass('lg-can-toggle');
-            _this.$thumbOuter.append('<span class="lg-toogle-thumb lg-icon"></span>');
+            _this.$thumbOuter.append('<button type="button" aria-label="Toggle thumbnails" class="lg-toogle-thumb lg-icon"></button>');
             _this.core.$outer.find('.lg-toogle-thumb').on('click.lg', function() {
                 _this.core.$outer.toggleClass('lg-thumb-open');
             });
@@ -435,4 +473,6 @@
 
     $.fn.lightGallery.modules.Thumbnail = Thumbnail;
 
-})(jQuery, window, document);
+})();
+
+}));
